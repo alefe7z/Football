@@ -52,7 +52,7 @@ jobs:
       - name: Configure gameplayfootball (report missing dependencies)
         run: |
           set -eu
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=2.8
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
       - name: Build gameplayfootball.exe
         run: cmake --build build --config Release --parallel 2
