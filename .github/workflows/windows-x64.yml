@@ -1,0 +1,83 @@
+name: Windows x64 - Gameplay Football
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/windows-x64-build]
+  pull_request:
+    paths:
+      - ".github/workflows/windows-x64.yml"
+      - "CMakeLists.txt"
+      - "CMakeModules/**"
+      - "sources.cmake"
+      - "src/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install MSYS2 MinGW x64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-SDL
+            mingw-w64-x86_64-SDL_image
+            mingw-w64-x86_64-SDL_ttf
+            mingw-w64-x86_64-SDL_gfx
+            mingw-w64-x86_64-SDL_net
+            mingw-w64-x86_64-boost
+            mingw-w64-x86_64-openal
+
+      - name: Print toolchain and dependency diagnostics
+        run: |
+          set -eu
+          g++ --version
+          cmake --version
+          echo 'Legacy dependencies required by CMakeLists.txt: OpenGL, SDL 1.2, SDL_image, SDL_ttf, SDL_gfx, SDL_net, Boost (system/thread/signals/filesystem), SGE, OpenAL, Blunted2.'
+          echo 'This repository does not vendor Blunted2, SGE or gameplay asset files.'
+          echo 'Available pkg-config packages:'
+          pkg-config --list-all | grep -Ei 'sdl|openal|boost|sge|blunted' || true
+
+      - name: Configure gameplayfootball (report missing dependencies)
+        run: |
+          set -eu
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+      - name: Build gameplayfootball.exe
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Collect Windows executable
+        run: |
+          set -eu
+          mkdir -p dist
+          EXE="$(find build -type f -iname 'gameplayfootball.exe' -print -quit)"
+          if [ -z "$EXE" ]; then
+            echo 'gameplayfootball.exe not generated' >&2
+            exit 1
+          fi
+          cp "$EXE" dist/gameplayfootball.exe
+
+      - name: Upload executable on successful build
+        uses: actions/upload-artifact@v4
+        with:
+          name: gameplayfootball-windows-x64
+          path: dist/gameplayfootball.exe
+          if-no-files-found: error
