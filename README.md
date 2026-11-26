@@ -48,6 +48,11 @@ stripped out — the menus, audio, full gameplay, and beyond.
 
 ---
 
+## Editor de conteúdo
+
+Para criar clubes com elencos próprios, trocar uniformes e montar um catálogo de
+bolas e chuteiras, abra o [guia do editor em português](docs/editor-de-conteudo.md).
+
 ## Highlights
 
 - **⚽ 3D match engine** — 22 players, custom ball physics (spin, bounce, wind),
