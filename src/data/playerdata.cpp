@@ -13,8 +13,7 @@ PlayerData::PlayerData(int playerDatabaseID) : PlayerData() {
   databaseID = playerDatabaseID;
 
   auto result = GetDB()->Query(
-      "select firstname, lastname, role, base_stat, profile_xml, age, skincolor, hairstyle, "
-      "haircolor, height from players where id = " +
+      "select * from players where id = " +
       int_to_str(databaseID) + " limit 1");
 
   std::string roleString;
@@ -49,6 +48,8 @@ PlayerData::PlayerData(int playerDatabaseID) : PlayerData() {
       hairStyle = result->data.at(0).at(c);
     if (result->header.at(c).compare("haircolor") == 0)
       hairColor = result->data.at(0).at(c);
+    if (result->header.at(c) == "face_shape")
+      faceShape.Load(result->data.at(0).at(c));
     if (result->header.at(c).compare("height") == 0)
       height = atof(result->data.at(0).at(c).c_str());
   }

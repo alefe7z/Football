@@ -337,6 +337,8 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
       }
       assert(colorCoords.find(vertexPos) != colorCoords.end());
       const Vector3& color = colorCoords.find(vertexPos)->second;
+      // Bone weights are keyed by the original bind-pose coordinates.
+      player->GetPlayerData()->GetFaceShape().Apply(uniqueMesh.data + v);
       uniqueMesh.data[v + 0] *= zMultiplier;
       uniqueMesh.data[v + 1] *= zMultiplier;
       uniqueMesh.data[v + 2] *= zMultiplier;

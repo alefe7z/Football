@@ -11,12 +11,24 @@ preparar o conteúdo antes da compilação.
 2. Clique em **Criar clube a partir do modelo**, digite o nome e a sigla.
    O editor cria novos registros para o time e seus jogadores e copia a
    formação, as táticas, o escudo e os dois uniformes.
-3. Com o novo clube selecionado, use **Editar nome de jogador** para mudar
+3. Com o novo clube selecionado, use **Editar jogador e rosto 3D** para mudar
    o elenco. Use **Trocar escudo** e os botões de uniforme para escolher
    imagens PNG. Para os uniformes, use como molde uma das texturas existentes.
 4. Repita para cada clube. O editor não estabelece um máximo de cadastros.
 5. Clique em **Jogar com este perfil** e escolha o executável compilado.
    Em **Partida Rápida**, selecione a liga para encontrar seu time.
+
+## Editar a forma do rosto
+
+Em **Editar jogador e rosto 3D**, escolha um atleta e abra **Editar rosto 3D**.
+Gire a cabeça para conferir o perfil. Os quatro controles alteram a largura
+das bochechas e da mandíbula, a projeção do rosto e a altura do queixo.
+A prévia mostra a malha de cabeça sem cabelo. **Salvar rosto** grava os
+ajustes daquele jogador no banco do perfil. Para desfazer, use **Restaurar
+formato** e salve. Fechar a janela descarta os ajustes em aberto.
+
+Abra o jogo compilado desta versão pelo editor para usar o rosto em partida.
+A textura de pele e o penteado do atleta continuam a vir dos dados do jogo.
 
 ## Bolas e chuteiras
 

@@ -12,6 +12,8 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from contextlib import closing
 from uuid import uuid4
 
+from face_editor import open_face
+
 
 SOURCE = Path(__file__).resolve().parents[1] / "data"
 DATABASE = Path("databases/default/database.sqlite")
@@ -112,7 +114,7 @@ class Editor:
         self.club = self.selector(frame, "Clube para editar ou usar como modelo")
         self.refresh_clubs()
         for label, action in (("Criar clube a partir do modelo", self.create_club),
-                              ("Editar nome de jogador", self.edit_player),
+                              ("Editar jogador e rosto 3D", self.edit_player),
                               ("Trocar escudo", lambda: self.club_image("logo_url", "")),
                               ("Trocar uniforme titular", lambda: self.club_image("kit_url", "_kit_01.png")),
                               ("Trocar uniforme reserva", lambda: self.club_image("kit_url", "_kit_02.png"))):
@@ -194,7 +196,25 @@ class Editor:
                 self.query("UPDATE players SET firstname=?, lastname=? WHERE id=?",
                            (a.strip(), b.strip(), key))
                 dialog.destroy()
-        self.button(dialog, "Editar", rename)
+        def face():
+            key, first, last = players[combo.current()]
+            columns = {row[1] for row in self.query("PRAGMA table_info(players)")}
+            field = "face_shape" if "face_shape" in columns else "''"
+            skin, data = self.query(f"SELECT skincolor, {field} FROM players WHERE id=?", (key,))[0]
+
+            def save(value):
+                with closing(sqlite3.connect(self.profile / DATABASE)) as db, db:
+                    db.execute("BEGIN IMMEDIATE")
+                    if "face_shape" not in {r[1] for r in db.execute("PRAGMA table_info(players)")}:
+                        db.execute("ALTER TABLE players ADD COLUMN face_shape TEXT DEFAULT ''")
+                    db.execute("UPDATE players SET face_shape=? WHERE id=?", (value, key))
+                self.status.set(f"Rosto de {first} {last} salvo.")
+
+            open_face(dialog, self.profile / "media/objects/players/models/fullbody.ase",
+                      f"{first} {last}", int(skin or 1), data, save)
+
+        self.button(dialog, "Editar nome", rename)
+        self.button(dialog, "Editar rosto 3D", face)
 
     def club_image(self, field, suffix):
         club = self.clubs[self.club.current()][0]
