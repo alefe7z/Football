@@ -1,90 +1,104 @@
-// written by bastiaan konings schuiling 2008 - 2015
-// this work is public domain. the code is undocumented, scruffy, untested, and should generally not be used for anything important.
-// i do not offer support, so don't ask. to be used for inspiration :)
-
 #ifndef _HPP_MENU_LEAGUE
 #define _HPP_MENU_LEAGUE
 
-#include "utils/gui2/windowmanager.hpp"
-
 #include "utils/gui2/page.hpp"
-#include "utils/gui2/widgets/grid.hpp"
-#include "utils/gui2/widgets/editline.hpp"
-#include "utils/gui2/widgets/dialog.hpp"
-#include "utils/gui2/widgets/filebrowser.hpp"
 #include "utils/gui2/widgets/button.hpp"
+#include "utils/gui2/widgets/dialog.hpp"
+#include "utils/gui2/widgets/editline.hpp"
+#include "utils/gui2/widgets/filebrowser.hpp"
+#include "utils/gui2/widgets/frame.hpp"
+#include "utils/gui2/widgets/grid.hpp"
 #include "utils/gui2/widgets/pulldown.hpp"
 #include "utils/gui2/widgets/slider.hpp"
+#include "utils/gui2/windowmanager.hpp"
 
 using namespace blunted;
 
 class LeaguePage : public Gui2Page {
+public:
+  LeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
+  virtual ~LeaguePage();
+  virtual void Process();
 
-  public:
-    LeaguePage(Gui2WindowManager *windowManager, const Gui2PageData &pageData);
-    virtual ~LeaguePage();
+protected:
+  void GoForward();
+  void GoPreMatch();
+  void GoMainMenu();
+  void AdvanceMatchday();
+  void StepTime();
+  void SetTimeCaption();
 
-  protected:
-    void StepTime();
-    void SetTimeCaption();
-
-    Gui2Caption *captionTime;
-
+  Gui2Caption* captionTime;
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
+  bool autoStepTriggered;
 };
 
 class LeagueStartPage : public Gui2Page {
+public:
+  LeagueStartPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
+  virtual ~LeagueStartPage();
+  virtual void Process();
 
-  public:
-    LeagueStartPage(Gui2WindowManager *windowManager, const Gui2PageData &pageData);
-    virtual ~LeagueStartPage();
+protected:
+  void GoLoad();
+  void GoNew();
 
-  protected:
-    void GoLoad();
-    void GoNew();
-
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueStartLoadPage : public Gui2Page {
+public:
+  LeagueStartLoadPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
+  virtual ~LeagueStartLoadPage();
+  virtual void Process();
 
-  public:
-    LeagueStartLoadPage(Gui2WindowManager *windowManager, const Gui2PageData &pageData);
-    virtual ~LeagueStartLoadPage();
+protected:
+  void GoLoadSave();
+  void DeleteSaveDir(const std::string& saveName);
+  void LoadSaveDir(const std::string& saveName);
 
-  protected:
-    void GoLoadSave();
-
-    Gui2FileBrowser *browser;
-
+  Gui2FileBrowser* browser;
+  unsigned long smokeStartedAt_ms = 0;  // load_damaged_save smoke route
+  bool smokeLoadTriggered = false;
+  bool saveRejected = false;  // the last LoadSaveDir found the save unreadable
 };
 
 class LeagueStartNewPage : public Gui2Page {
+public:
+  LeagueStartNewPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
+  virtual ~LeagueStartNewPage();
+  virtual void Process();
 
-  public:
-    LeagueStartNewPage(Gui2WindowManager *windowManager, const Gui2PageData &pageData);
-    virtual ~LeagueStartNewPage();
+protected:
+  void GoDatabaseSelectDialog();
+  void CloseDatabaseSelectDialog();
+  void GoProceed();
+  void CloseCreateSaveDialog();
+  void RefreshTeamSelect();
 
-  protected:
-    void GoDatabaseSelectDialog();
-    void CloseDatabaseSelectDialog();
-    void GoProceed();
-    void CloseCreateSaveDialog();
+  Gui2Button* databaseSelectButton;
+  Gui2Pulldown* currencySelectPulldown;
+  Gui2Slider* difficultySlider;
+  Gui2EditLine* saveNameInput;
+  Gui2EditLine* managerNameInput;
+  Gui2Pulldown* teamSelectPulldown;
 
-    Gui2Button *databaseSelectButton;
-    Gui2Pulldown *currencySelectPulldown;
-    Gui2Slider *difficultySlider;
-    Gui2EditLine *saveNameInput;
-    Gui2EditLine *managerNameInput;
+  Gui2Dialog* databaseSelectDialog;
+  Gui2FileBrowser* databaseSelectBrowser;
+  Gui2View* previousFocus;
 
-    Gui2Dialog *databaseSelectDialog;
-    Gui2FileBrowser *databaseSelectBrowser;
-    Gui2View *previousFocus;
+  std::string data_SelectedDatabase;
+  std::string data_SelectedTeamID;
 
-    std::string data_SelectedDatabase;
+  Gui2Dialog* createSaveDialog;
 
-    Gui2Dialog *createSaveDialog;
-
-    bool success;
-
+  bool success;
+  unsigned long pageCreatedTime_ms;
+  unsigned long dialogShownTime_ms;
+  bool autoAdvanceTriggered;
+  bool autoCloseDialogTriggered;
 };
 
 #endif

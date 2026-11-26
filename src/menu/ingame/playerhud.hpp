@@ -1,33 +1,36 @@
-// written by bastiaan konings schuiling 2008 - 2015
-// this work is public domain. the code is undocumented, scruffy, untested, and should generally not be used for anything important.
-// i do not offer support, so don't ask. to be used for inspiration :)
-
 #ifndef _HPP_GUI2_VIEW_PLAYERHUD
 #define _HPP_GUI2_VIEW_PLAYERHUD
 
 #include "utils/gui2/view.hpp"
-
-#include "scene/objects/image2d.hpp"
+#include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/image.hpp"
 
 using namespace blunted;
 
 class Match;
 
 class Gui2PlayerHUD : public Gui2View {
+public:
+  Gui2PlayerHUD(Gui2WindowManager* windowManager, Match* match);
+  virtual ~Gui2PlayerHUD();
 
-  public:
-    Gui2PlayerHUD(Gui2WindowManager *windowManager, const std::string &name, float x_percent, float y_percent, float width_percent, float height_percent, Match *match);
-    virtual ~Gui2PlayerHUD();
+  virtual void Put();
 
-    void GetImages(std::vector < boost::intrusive_ptr<Image2D> > &target);
+protected:
+  Match* match;
 
-    virtual void Redraw();
+  Gui2Image* hudBackingImage[2];
+  Gui2Caption* playerNameCaption[2];
+  Gui2Caption* roleCaption[2];
+  Gui2Caption* conditionCaption[2];
+  Gui2Image* staminaImage[2];
+  Gui2Image* powerGaugeImage[2];
 
-  protected:
-    boost::intrusive_ptr<Image2D> image;
-
-    Match *match;
-
+  std::string lastPlayerName[2];
+  std::string lastRole[2];
+  std::string lastCondition[2];
+  float lastStamina[2];
+  float lastPowerGauge[2];
 };
 
 #endif

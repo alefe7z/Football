@@ -1,45 +1,52 @@
-// written by bastiaan konings schuiling 2008 - 2015
-// this work is public domain. the code is undocumented, scruffy, untested, and should generally not be used for anything important.
-// i do not offer support, so don't ask. to be used for inspiration :)
-
 #ifndef _HPP_HIDKEYBOARD
 #define _HPP_HIDKEYBOARD
 
+#include <SDL2/SDL.h>
+
 #include "base/math/vector3.hpp"
-
-#include <SDL/SDL.h>
-
 #include "ihidevice.hpp"
 
 using namespace blunted;
 
 class HIDKeyboard : public IHIDevice {
+public:
+  HIDKeyboard();
+  virtual ~HIDKeyboard();
 
-  public:
-    HIDKeyboard();
-    virtual ~HIDKeyboard();
+  virtual void LoadConfig();
+  virtual void SaveConfig();
 
-    virtual void LoadConfig();
-    virtual void SaveConfig();
+  virtual void Process();
 
-    virtual void Process();
+  virtual bool GetButton(e_ButtonFunction buttonFunction);
+  virtual float GetButtonValue(e_ButtonFunction buttonFunction);  // for analog support
+  virtual void SetButton(e_ButtonFunction buttonFunction, bool state);
+  virtual bool GetPreviousButtonState(e_ButtonFunction buttonFunction);
+  virtual Vector3 GetDirection();
+  virtual void SetRumble(float low_frequency, float high_frequency, unsigned int duration_ms) {}
 
-    virtual bool GetButton(e_ButtonFunction buttonFunction);
-    virtual float GetButtonValue(e_ButtonFunction buttonFunction); // for analog support
-    virtual void SetButton(e_ButtonFunction buttonFunction, bool state);
-    virtual bool GetPreviousButtonState(e_ButtonFunction buttonFunction);
-    virtual Vector3 GetDirection();
+  void SetFunctionMapping(int index, SDL_Keycode key) {
+    std::unique_lock<std::mutex> blah(mutex);
+    functionMapping[index] = key;
+  }
 
-    void SetFunctionMapping(int index, SDLKey key) { boost::mutex::scoped_lock blah(mutex); functionMapping[index] = key; }
+  SDL_Keycode GetFunctionMapping(e_ButtonFunction buttonFunction) {
+    std::unique_lock<std::mutex> blah(mutex);
+    return functionMapping[buttonFunction];
+  }
 
-    SDLKey GetFunctionMapping(e_ButtonFunction buttonFunction) { boost::mutex::scoped_lock blah(mutex); return functionMapping[buttonFunction]; }
+  // Default key for a function on the current keyboard layout.
+  static SDL_Keycode DefaultKey(int buttonFunction);
 
-  protected:
-    bool functionButtonState[e_ButtonFunction_Size];
-    bool previousFunctionButtonState[e_ButtonFunction_Size];
+protected:
+  // Bindings are stored as physical scancodes and resolved to the current
+  // layout's keycodes; this tracks layout changes reported by SDL.
+  int keymapGeneration = -1;
 
-    SDLKey functionMapping[e_ButtonFunction_Size];
+  bool functionButtonState[e_ButtonFunction_Size];
+  bool previousFunctionButtonState[e_ButtonFunction_Size];
 
+  SDL_Keycode functionMapping[e_ButtonFunction_Size];
 };
 
 #endif

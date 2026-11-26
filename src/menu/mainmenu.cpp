@@ -1,151 +1,398 @@
-// written by bastiaan konings schuiling 2008 - 2015
-// this work is public domain. the code is undocumented, scruffy, untested, and should generally not be used for anything important.
-// i do not offer support, so don't ask. to be used for inspiration :)
-
 #include "mainmenu.hpp"
 
-#include "../main.hpp"
-#include "controllerselect.hpp"
-#include "settings.hpp"
-#include "credits.hpp"
-
-#include "pagefactory.hpp"
-
-#include "blunted.hpp"
-
+#include <algorithm>
+#include <cctype>
 #include <set>
-#include <boost/algorithm/string.hpp>
+
+#include "../data/teamdata.hpp"
+#include "../league/leaguecode.hpp"
+#include "../main.hpp"
+#include "blunted.hpp"
+#include "career/career_database.hpp"
+#include "controllerselect.hpp"
+#include "credits.hpp"
+#include "layout_audit.hpp"
+#include "pagefactory.hpp"
+#include "settings.hpp"
+#include "utils/localization.hpp"
 
 using namespace blunted;
 
-IntroPage::IntroPage(Gui2WindowManager *windowManager, const Gui2PageData &pageData) : Gui2Page(windowManager, pageData) {
+namespace {
 
-  windowManager->BlackoutBackground(true);
+constexpr unsigned long kMenuSmokeAdvanceDelay_ms = 250;
 
-  Gui2Root *root = windowManager->GetRoot();
+bool MenuSmokeQuickMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
+}
 
-  bg = new Gui2Image(windowManager, "image_intro", 0, 0, 100, 100);
-  bg->LoadImage("media/menu/backgrounds/intro01.png");
+bool MenuSmokeFullMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
 
-  this->AddView(bg);
-  bg->Show();
+bool MenuSmokeLeagueEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_league", false) ||
+         !GetConfiguration()->Get("menu_smoke_test_league_route", "").empty();
+}
+
+bool MenuSmokeCareerEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_career", false);
+}
+
+bool MenuSmokeSettingsEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_settings", false);
+}
+
+bool MenuSmokeCreditsEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_credits", false);
+}
+
+bool MenuSmokeAutoQuickMatchEnabled() {
+  return MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled();
+}
+
+void AddMainMenuCaption(Gui2WindowManager* windowManager, Gui2View* panel, const std::string& name,
+                        float y_percent, float height_percent, const std::string& text) {
+  Gui2Caption* caption =
+      new Gui2Caption(windowManager, name, 2, y_percent, 46, height_percent, text);
+  panel->AddView(caption);
+  caption->Show();
+}
+
+}  // namespace
+
+IntroPage::IntroPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
+    : Gui2Page(windowManager, pageData) {
+  // Immersive full-screen background overlay
+  Gui2Frame* splashBg = new Gui2Frame(windowManager, "frame_intro_bg", 0, 0, 100, 100, true);
+  this->AddView(splashBg);
+  splashBg->Show();
+
+  constexpr float kLogoAspectRatio = 512.0f / 180.0f;
+  constexpr float kLogoHeight = 22.0f;
+  const float logoWidth = windowManager->GetWidthPercentForHeight(kLogoHeight, kLogoAspectRatio);
+  Gui2Image* logo = new Gui2Image(windowManager, "image_intro_logo", 50.0f - logoWidth * 0.5f, 20,
+                                  logoWidth, kLogoHeight);
+  logo->LoadImage("media/menu/main/title01.png");
+  splashBg->AddView(logo);
+  logo->Show();
+
+  Gui2Caption* subtitle =
+      new Gui2Caption(windowManager, "caption_intro_sub", 0, 45, 100, 3, TR("intro_title"));
+  subtitle->SetPosition(50.0f - subtitle->GetTextWidthPercent() * 0.5f, 45);
+  subtitle->SetColor(windowManager->GetStyle()->GetColor(e_DecorationType_Bright2));
+  splashBg->AddView(subtitle);
+  subtitle->Show();
+
+  Gui2Frame* promptPanel = new Gui2Frame(windowManager, "frame_intro_prompt", 30, 80, 40, 10, true);
+  splashBg->AddView(promptPanel);
+  promptPanel->Show();
+  Gui2Caption* prompt =
+      new Gui2Caption(windowManager, "caption_intro_prompt", 0, 3.5f, 40, 3, TR("intro_continue"));
+  prompt->SetPosition(20.0f - prompt->GetTextWidthPercent() * 0.5f, 3.5f);
+  prompt->SetColor(windowManager->GetStyle()->GetColor(e_DecorationType_Bright1));
+  promptPanel->AddView(prompt);
+  prompt->Show();
 
   this->SetFocus();
 
   this->Show();
 }
 
-IntroPage::~IntroPage() {
-  windowManager->BlackoutBackground(false);
-}
+IntroPage::~IntroPage() {}
 
-void IntroPage::ProcessWindowingEvent(WindowingEvent *event) {
+void IntroPage::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsEscape() || event->IsActivate()) {
-
     CreatePage((int)e_PageID_MainMenu, 0);
     return;
   }
 }
 
-void IntroPage::ProcessKeyboardEvent(KeyboardEvent *event) {
-  CreatePage((int)e_PageID_MainMenu, 0);
+void IntroPage::ProcessKeyboardEvent(KeyboardEvent* event) {
+  if (event->GetKeyOnce(SDLK_RETURN) || event->GetKeyOnce(SDLK_KP_ENTER)) {
+    CreatePage((int)e_PageID_MainMenu, 0);
+    return;
+  }
+  event->Ignore();
 }
 
+OutroPage::OutroPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
+    : Gui2Page(windowManager, pageData) {
+  constexpr float kLogoAspectRatio = 512.0f / 180.0f;
+  constexpr float kLogoHeight = 18.0f;
+  const float logoWidth = windowManager->GetWidthPercentForHeight(kLogoHeight, kLogoAspectRatio);
+  Gui2Image* logo = new Gui2Image(windowManager, "image_outro_logo", 50.0f - logoWidth * 0.5f, 20,
+                                  logoWidth, kLogoHeight);
+  logo->LoadImage("media/menu/main/title01.png");
+  this->AddView(logo);
+  logo->Show();
 
-OutroPage::OutroPage(Gui2WindowManager *windowManager, const Gui2PageData &pageData) : Gui2Page(windowManager, pageData) {
-
-  windowManager->BlackoutBackground(true);
-
-  Gui2Root *root = windowManager->GetRoot();
-
-  bg = new Gui2Image(windowManager, "image_outro", 0, 0, 100, 100);
-  bg->LoadImage("media/menu/backgrounds/outro01.png");
-
-  this->AddView(bg);
-  bg->Show();
+  Gui2Frame* messagePanel =
+      new Gui2Frame(windowManager, "frame_outro_message", 32, 70, 36, 16, true);
+  this->AddView(messagePanel);
+  messagePanel->Show();
+  Gui2Caption* message =
+      new Gui2Caption(windowManager, "caption_outro_message", 0, 3, 32, 3, TR("outro_thanks"));
+  message->SetPosition(18.0f - message->GetTextWidthPercent() * 0.5f, 3);
+  messagePanel->AddView(message);
+  message->Show();
+  Gui2Caption* prompt =
+      new Gui2Caption(windowManager, "caption_outro_prompt", 0, 9, 32, 3, TR("outro_prompt"));
+  prompt->SetPosition(18.0f - prompt->GetTextWidthPercent() * 0.5f, 9);
+  messagePanel->AddView(prompt);
+  prompt->Show();
 
   this->SetFocus();
-
   this->Show();
 }
 
-OutroPage::~OutroPage() {
-  windowManager->BlackoutBackground(false);
-}
+OutroPage::~OutroPage() {}
 
-void OutroPage::ProcessWindowingEvent(WindowingEvent *event) {
+void OutroPage::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsEscape() || event->IsActivate()) {
-
     GetMenuTask()->QuitGame();
   }
 }
 
-void OutroPage::ProcessKeyboardEvent(KeyboardEvent *event) {
-  GetMenuTask()->QuitGame();
+void OutroPage::ProcessKeyboardEvent(KeyboardEvent* event) {
+  if (event->GetKeyOnce(SDLK_RETURN) || event->GetKeyOnce(SDLK_KP_ENTER)) {
+    GetMenuTask()->QuitGame();
+    return;
+  }
+  event->Ignore();
 }
 
+MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
+  // Back at the main menu, any career squad from an abandoned match is stale.
+  ClearSquadOverride();
+  Gui2Frame* root = new Gui2Frame(windowManager, "frame_mm_root", 2, 3, 96, 94, true);
+  this->AddView(root);
+  root->Show();
 
-MainMenuPage::MainMenuPage(Gui2WindowManager *windowManager, const Gui2PageData &pageData) : Gui2Page(windowManager, pageData) {
-  Gui2Image *title = new Gui2Image(windowManager, "image_main_title", 28, 32, 44, 20);
+  Gui2Frame* titlePanel = new Gui2Frame(windowManager, "frame_mm_title", 4, 2, 38, 24, true);
+  constexpr float kLogoAspectRatio = 512.0f / 180.0f;
+  constexpr float kLogoHeight = 18.0f;
+  const float logoWidth = windowManager->GetWidthPercentForHeight(kLogoHeight, kLogoAspectRatio);
+  Gui2Image* title = new Gui2Image(windowManager, "image_main_title", 19.0f - logoWidth * 0.5f, 2,
+                                   logoWidth, kLogoHeight);
   title->LoadImage("media/menu/main/title01.png");
-
-  this->AddView(title);
+  titlePanel->AddView(title);
   title->Show();
+  root->AddView(titlePanel);
+  titlePanel->Show();
 
-  buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 20, 3, "Match"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_cup", 0, 0, 20, 3, "Cup"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 20, 3, "League"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_edit", 0, 0, 20, 3, "Editor"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 20, 3, "Settings"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 20, 3, "Credits"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 20, 3, "Exit"));
+  Gui2Frame* navPanel = new Gui2Frame(windowManager, "frame_mm_nav", 4, 28, 38, 50, true);
+  grid = new Gui2Grid(windowManager, "grid_main", 2, 2, 34, 46);
+
+  buttons.push_back(
+      new Gui2Button(windowManager, "button_main_start", 0, 0, 34, 5, TR("menu_quickmatch")));
+  buttons.push_back(
+      new Gui2Button(windowManager, "button_main_league", 0, 0, 34, 5, TR("menu_leaguemode")));
+  buttons.push_back(
+      new Gui2Button(windowManager, "button_main_career", 0, 0, 34, 5, TR("menu_careermode")));
+  buttons.push_back(
+      new Gui2Button(windowManager, "button_main_settings", 0, 0, 34, 5, TR("menu_settings")));
+  buttons.push_back(
+      new Gui2Button(windowManager, "button_main_credits", 0, 0, 34, 5, TR("menu_credits")));
+  buttons.push_back(
+      new Gui2Button(windowManager, "button_main_quit", 0, 0, 34, 5, TR("menu_quit")));
+
   if (!IsReleaseVersion()) {
-    buttons.push_back(new Gui2Button(windowManager, "button_main_import", 0, 0, 20, 3, "Import FM"));
+    buttons.push_back(
+        new Gui2Button(windowManager, "button_main_import", 0, 0, 34, 5, TR("menu_import")));
   }
 
-  buttons.at(0)->sig_OnClick.connect(boost::bind(&MainMenuPage::GoControllerSelect, this));
-  buttons.at(2)->sig_OnClick.connect(boost::bind(&MainMenuPage::GoLeague, this));
-  buttons.at(4)->sig_OnClick.connect(boost::bind(&MainMenuPage::GoSettings, this));
-  buttons.at(5)->sig_OnClick.connect(boost::bind(&MainMenuPage::GoCredits, this));
+  buttons.at(0)->sig_OnClick.connect([this](...) { GoControllerSelect(); });
+  buttons.at(1)->sig_OnClick.connect([this](...) { GoLeague(); });
+  buttons.at(2)->sig_OnClick.connect([this](...) { GoCareerMode(); });
+  buttons.at(3)->sig_OnClick.connect([this](...) { GoSettings(); });
+  buttons.at(4)->sig_OnClick.connect([this](...) { GoCredits(); });
   if (!IsReleaseVersion()) {
-    buttons.at(6)->sig_OnClick.connect(boost::bind(&MenuTask::QuitGame, GetMenuTask()));
+    buttons.at(5)->sig_OnClick.connect(std::bind(&MenuTask::QuitGame, GetMenuTask()));
+    buttons.at(6)->sig_OnClick.connect([this](...) { GoImportDB(); });
   } else {
-    buttons.at(6)->sig_OnClick.connect(boost::bind(&MainMenuPage::GoOutro, this));
-  }
-  if (!IsReleaseVersion()) {
-    buttons.at(7)->sig_OnClick.connect(boost::bind(&MainMenuPage::GoImportDB, this));
+    buttons.at(5)->sig_OnClick.connect([this](...) { GoOutro(); });
   }
 
-  buttons.at(1)->SetActive(false);
-  buttons.at(2)->SetActive(false);
-  buttons.at(3)->SetActive(false);
+  for (unsigned int i = 0; i < buttons.size(); i++) {
+    grid->AddView(buttons.at(i), i, 0);
+  }
+  grid->UpdateLayout(0.3, 0.3, 0.5, 0.5);
 
-  grid = new Gui2Grid(windowManager, "grid_main", 29.25, 52, 41.5, 40);
-
-  grid->AddView(buttons.at(0), 0, 0);
-  grid->AddView(buttons.at(1), 1, 0);
-  grid->AddView(buttons.at(2), 2, 0);
-  grid->AddView(buttons.at(3), 3, 0);
-  grid->AddView(buttons.at(4), 0, 1);
-  grid->AddView(buttons.at(5), 1, 1);
-  grid->AddView(buttons.at(6), 2, 1);
-  if (!IsReleaseVersion()) grid->AddView(buttons.at(7), 3, 1);
-
-  grid->UpdateLayout(0.25, 0.25, 0.25, 0.25);
-
-  this->AddView(grid);
+  navPanel->AddView(grid);
   grid->Show();
+  root->AddView(navPanel);
+  navPanel->Show();
 
-  buttons.at(pageData.properties->GetInt("selectedButtonID"))->SetFocus();
+  Gui2Frame* infoPanel = new Gui2Frame(windowManager, "frame_mm_info", 46, 4, 50, 42, true);
+  CareerDatabase::GetInstance().Initialize("user/career");
+  CareerSave* activeSave = CareerDatabase::GetInstance().GetActiveSave();
+
+  if (activeSave) {
+    Gui2Caption* activeTitle = new Gui2Caption(windowManager, "caption_mm_active", 2, 2, 46, 3,
+                                               TR("mainmenu_resume_title"));
+    activeTitle->SetColor(windowManager->GetStyle()->GetColor(e_DecorationType_Bright2));
+    infoPanel->AddView(activeTitle);
+    activeTitle->Show();
+
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_saveteam", 2, 8,
+                       TRF("mainmenu_save_team", {activeSave->name, activeSave->club.leagueName}));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_savemgr", 2, 12,
+                       TRF("mainmenu_save_manager", {activeSave->managerName}));
+    AddMainMenuCaption(
+        windowManager, infoPanel, "caption_mm_saveseason", 2, 16,
+        TRF("mainmenu_save_season", {std::to_string(activeSave->season.currentSeason),
+                                     std::to_string(activeSave->season.currentWeek)}));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_savedesc", 2, 22,
+                       TR("mainmenu_resume_hint"));
+  } else {
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_welcome", 2, 3, "League Soccer");
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_tagline_1", 6, 2.2f,
+                       TR("mainmenu_tagline_1"));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_tagline_2", 9, 2.2f,
+                       TR("mainmenu_tagline_2"));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_modes_quick", 14, 2.3f,
+                       TR("mainmenu_mode_quick"));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_modes_league", 18, 2.3f,
+                       TR("mainmenu_mode_league"));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_modes_career", 22, 2.2f,
+                       TR("mainmenu_mode_career"));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_hint_1", 28, 2.2f,
+                       TR("mainmenu_hint_nav"));
+    AddMainMenuCaption(windowManager, infoPanel, "caption_mm_hint_2", 31, 2.2f,
+                       TR("mainmenu_hint_select"));
+  }
+  root->AddView(infoPanel);
+  infoPanel->Show();
+
+  Gui2Frame* tipsPanel = new Gui2Frame(windowManager, "frame_mm_tips", 46, 50, 50, 34, true);
+  AddMainMenuCaption(windowManager, tipsPanel, "caption_mm_tips_title", 2, 2,
+                     TR("mainmenu_tips_title"));
+  AddMainMenuCaption(windowManager, tipsPanel, "caption_mm_tips_supercancel", 6, 2.2f,
+                     TR("mainmenu_tips_supercancel"));
+  AddMainMenuCaption(windowManager, tipsPanel, "caption_mm_tips_fakeshot", 10, 2.2f,
+                     TR("mainmenu_tips_fakeshot"));
+  AddMainMenuCaption(windowManager, tipsPanel, "caption_mm_tips_condition", 14, 2.2f,
+                     TR("mainmenu_tips_condition"));
+  AddMainMenuCaption(windowManager, tipsPanel, "caption_mm_tips_chip", 18, 2.2f,
+                     TR("mainmenu_tips_chip"));
+  root->AddView(tipsPanel);
+  tipsPanel->Show();
+
+  int selectedButtonID = pageData.properties->GetInt("selectedButtonID");
+  selectedButtonID = clamp(selectedButtonID, 0, (signed int)buttons.size() - 1);
+  buttons.at(selectedButtonID)->SetFocus();
 
   this->Show();
 }
 
-MainMenuPage::~MainMenuPage() {
+MainMenuPage::~MainMenuPage() {}
+
+void MainMenuPage::Process() {
+  Gui2Page::Process();
+
+  const std::string auditRoute = GetConfiguration()->Get("menu_smoke_test_page", "");
+  if (!autoAdvanceTriggered && !auditRoute.empty() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    if (auditRoute == "widgets") {
+      const bool passed = SmokeMenuWidgets(windowManager, this);
+      printf(passed ? "[menu-smoke] Standalone widgets reached successfully\n"
+                    : "[menu-smoke] Widget checks failed\n");
+      GetMenuTask()->QuitGame();
+      return;
+    }
+    const int target = StandaloneMenuSmokePage(auditRoute);
+    if (target < 0) {
+      printf("[menu-layout] Unknown standalone route: %s\n", auditRoute.c_str());
+      GetMenuTask()->QuitGame();
+      return;
+    }
+    if (auditRoute == "career_season_pending" || auditRoute == "career_tactics" ||
+        auditRoute == "career_tactics_delegated" || auditRoute == "career_press" ||
+        auditRoute == "career_roster" || auditRoute == "career_roster_player" ||
+        auditRoute == "career_player_training" || auditRoute == "career_player_missing" ||
+        auditRoute == "career_owner_legacy" || auditRoute == "career_owner_delegated" ||
+        auditRoute == "career_training" || auditRoute == "career_owner_gm" ||
+        auditRoute == "career_coach" || auditRoute == "career_player" ||
+        auditRoute == "career_season" || auditRoute == "career_matchday" ||
+        auditRoute == "career_match" || auditRoute == "career_bid_detail" ||
+        auditRoute == "career_standings" || auditRoute == "career_market" ||
+        auditRoute == "career_bids" || auditRoute == "career_staff" ||
+        auditRoute == "career_hire" || auditRoute == "career_sponsors") {
+      const std::string directory = GetConfiguration()->Get("menu_smoke_career_save_directory", "");
+      if (directory.empty() || !CareerDatabase::GetInstance().Initialize(directory) ||
+          !CareerDatabase::GetInstance().LoadCareerSave("Training Audit")) {
+        printf("[menu-layout] Training fixture could not be loaded\n");
+        GetMenuTask()->QuitGame();
+        return;
+      }
+    }
+    // The save page lists the slots in a fixture directory when one is given.
+    if (auditRoute == "career_save") {
+      const std::string directory = GetConfiguration()->Get("menu_smoke_career_save_directory", "");
+      if (!directory.empty())
+        CareerDatabase::GetInstance().Initialize(directory);
+    }
+    Properties properties;
+    properties.Set("careerSection", GetConfiguration()->Get("menu_smoke_career_section", "0"));
+    properties.Set("focusCareerTab", "true");
+    // The bid page negotiates for one market target: the fixture's first.
+    if (auditRoute == "career_bid_detail") {
+      const auto targets = CareerDatabase::GetInstance().GetTransferTargets();
+      if (!targets.empty())
+        properties.Set("playerName", targets.front().name);
+    }
+    // Exercise the missing-device fallback safely, or the virtual smoke gamepad
+    // (controller 1, after the keyboard) when one was attached.
+    properties.Set("controllerID",
+                   GetConfiguration()->GetBool("menu_smoke_virtual_gamepad", false) ? 1 : -1);
+    CreatePage(target, properties);
+    return;
+  }
+
+  if (!autoAdvanceTriggered && MenuSmokeAutoQuickMatchEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening Quick Match\n");
+    GoControllerSelect();
+  } else if (!autoAdvanceTriggered && MenuSmokeLeagueEnabled() &&
+             EnvironmentManager::GetInstance().GetTime_ms() >=
+                 pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening League Mode\n");
+    GoLeague();
+  } else if (!autoAdvanceTriggered && MenuSmokeCareerEnabled() &&
+             EnvironmentManager::GetInstance().GetTime_ms() >=
+                 pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening Career Mode\n");
+    GoCareerMode();
+  } else if (!autoAdvanceTriggered && MenuSmokeSettingsEnabled() &&
+             EnvironmentManager::GetInstance().GetTime_ms() >=
+                 pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening Settings\n");
+    GoSettings();
+  } else if (!autoAdvanceTriggered && MenuSmokeCreditsEnabled() &&
+             EnvironmentManager::GetInstance().GetTime_ms() >=
+                 pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening Credits\n");
+    GoCredits();
+  }
 }
 
 void MainMenuPage::GoControllerSelect() {
-
+  // Quick Match is an exhibition: drop any career/league fixture armed by a
+  // match that was backed out of, so its result cannot be credited there.
+  CareerDatabase::GetInstance().ClearPendingFixture();
+  LeagueClearPendingFixture();
   this->Exit();
 
   pageData.properties->Set("selectedButtonID", 0);
@@ -157,21 +404,29 @@ void MainMenuPage::GoControllerSelect() {
 }
 
 void MainMenuPage::GoLeague() {
-
   this->Exit();
 
-  pageData.properties->Set("selectedButtonID", 2);
+  pageData.properties->Set("selectedButtonID", 1);
   Properties properties;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_League_Start, properties, 0);
 
   delete this;
 }
 
-void MainMenuPage::GoSettings() {
-
+void MainMenuPage::GoCareerMode() {
   this->Exit();
 
-  pageData.properties->Set("selectedButtonID", 4);
+  pageData.properties->Set("selectedButtonID", 2);
+  Properties properties;
+  windowManager->GetPageFactory()->CreatePage((int)e_PageID_CareerMenu, properties, 0);
+
+  delete this;
+}
+
+void MainMenuPage::GoSettings() {
+  this->Exit();
+
+  pageData.properties->Set("selectedButtonID", 3);
   Properties properties;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_Settings, properties, 0);
 
@@ -181,7 +436,7 @@ void MainMenuPage::GoSettings() {
 void MainMenuPage::GoCredits() {
   this->Exit();
 
-  pageData.properties->Set("selectedButtonID", 5);
+  pageData.properties->Set("selectedButtonID", 4);
   Properties properties;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_Credits, properties, 0);
 
@@ -197,12 +452,15 @@ void MainMenuPage::GoOutro() {
   delete this;
 }
 
-bool SortClubPlayersByAverageStat(const PlayerImport &a, const PlayerImport &b) {
-  if (a.averageStat < b.averageStat) return true; else return false;
+bool SortClubPlayersByAverageStat(const PlayerImport& a, const PlayerImport& b) {
+  if (a.averageStat < b.averageStat)
+    return true;
+  else
+    return false;
   return false;
 }
 
-bool SortClubPlayersByRole(const PlayerImport &a, const PlayerImport &b) {
+bool SortClubPlayersByRole(const PlayerImport& a, const PlayerImport& b) {
   float aDef = 0;
   float aAtt = 0;
   float bDef = 0;
@@ -210,9 +468,16 @@ bool SortClubPlayersByRole(const PlayerImport &a, const PlayerImport &b) {
   int defPos = -1;
   int attPos = -1;
   for (unsigned int statPos = 0; statPos < a.profileStats.size(); statPos++) {
-    if (a.profileStats.at(statPos).name.compare("mental_defensivepositioning") == 0) { aDef = a.profileStats.at(statPos).value; defPos = statPos; }
-    if (a.profileStats.at(statPos).name.compare("mental_offensivepositioning") == 0) { aAtt = a.profileStats.at(statPos).value; attPos = statPos; }
-    if (defPos != -1 && attPos != -1) break;
+    if (a.profileStats.at(statPos).name == "mental_defensivepositioning") {
+      aDef = a.profileStats.at(statPos).value;
+      defPos = statPos;
+    }
+    if (a.profileStats.at(statPos).name == "mental_offensivepositioning") {
+      aAtt = a.profileStats.at(statPos).value;
+      attPos = statPos;
+    }
+    if (defPos != -1 && attPos != -1)
+      break;
   }
 
   // statPositions are the same for each player, so use cached pos
@@ -222,35 +487,42 @@ bool SortClubPlayersByRole(const PlayerImport &a, const PlayerImport &b) {
   float aRole = aAtt - aDef;
   float bRole = bAtt - bDef;
 
-  if (aRole < bRole) return true; else return false;
+  if (aRole < bRole)
+    return true;
+  else
+    return false;
   return false;
 }
 
-std::string RenameLeague(Database *namedb, const std::string &name, const std::string &srcfield) {
-  std::string query = "select " + srcfield + " from leaguenames where name = \"" + name + "\" limit 1;";
-  DatabaseResult *result = namedb->Query(query);
+std::string RenameLeague(Database* namedb, const std::string& name, const std::string& srcfield) {
+  std::string query =
+      "select " + srcfield + " from leaguenames where name = " + SqlString(name) + " limit 1;";
+  auto result = namedb->Query(query);
   std::string targetName;
   if (result->data.size() > 0) {
     targetName = result->data.at(0).at(0);
-  } else targetName = name;
-  delete result;
+  } else
+    targetName = name;
   return targetName;
 }
 
-std::string RenameClub(Database *namedb, const std::string &name, const std::string &srcfield) {
-  std::string query = "select " + srcfield + " from clubnames where name = \"" + name + "\" limit 1;";
-  DatabaseResult *result = namedb->Query(query);
+std::string RenameClub(Database* namedb, const std::string& name, const std::string& srcfield) {
+  std::string query =
+      "select " + srcfield + " from clubnames where name = " + SqlString(name) + " limit 1;";
+  auto result = namedb->Query(query);
   std::string targetName;
   if (result->data.size() > 0) {
     targetName = result->data.at(0).at(0);
-  } else targetName = name;
-  delete result;
+  } else
+    targetName = name;
   return targetName;
 }
 
-ClubData GetClubData(Database *namedb, const std::string &name) {
-  std::string query = "select formation_xml, tactics_xml, shortname, color1, color2 from clubnames where name = \"" + name + "\" limit 1;";
-  DatabaseResult *result = namedb->Query(query);
+ClubData GetClubData(Database* namedb, const std::string& name) {
+  std::string query =
+      "select formation_xml, tactics_xml, shortname, color1, color2 from clubnames where name = " +
+      SqlString(name) + " limit 1;";
+  auto result = namedb->Query(query);
   ClubData data;
   if (result->data.size() > 0) {
     data.formation_xml = result->data.at(0).at(0);
@@ -262,62 +534,71 @@ ClubData GetClubData(Database *namedb, const std::string &name) {
     data.formation_xml = "";
     data.tactics_xml = "";
     data.shortName = name;
-    data.shortName.erase(remove_if(data.shortName.begin(), data.shortName.end(), isspace), data.shortName.end());
-    data.shortName = boost::to_upper_copy(data.shortName.substr(0, 3));
+    data.shortName.erase(remove_if(data.shortName.begin(), data.shortName.end(), isspace),
+                         data.shortName.end());
+    data.shortName = data.shortName.substr(0, 3);
+    std::transform(data.shortName.begin(), data.shortName.end(), data.shortName.begin(), ::toupper);
     data.color1 = "40, 40, 40";
     data.color2 = "200, 200, 200";
   }
-  delete result;
   return data;
 }
 
-void GetPlayerData(Database *namedb, const std::string &firstname, const std::string &lastname, std::string &fakefirstname_ret, std::string &fakelastname_ret, int &skincolor_ret, std::string &hairstyle_ret, std::string &haircolor_ret, float &height_ret, float &weight_ret, signed int &formationorder_ret, float &baseStatOffset_ret, std::string &customProfile_ret) {
-
+void GetPlayerData(Database* namedb, const std::string& firstname, const std::string& lastname,
+                   std::string& fakefirstname_ret, std::string& fakelastname_ret,
+                   int& skincolor_ret, std::string& hairstyle_ret, std::string& haircolor_ret,
+                   float& height_ret, float& weight_ret, signed int& formationorder_ret,
+                   float& baseStatOffset_ret, std::string& customProfile_ret) {
   skincolor_ret = 0;
   hairstyle_ret = "";
   haircolor_ret = "";
   height_ret = 0.0f;
   weight_ret = 0.0f;
 
-  std::string query = "select fakefirstname, fakelastname, skincolor, hairstyle, haircolor, height, weight, formationorder, base_stat_offset, profile_xml from playernames where firstname = \"" + firstname + "\" and lastname = \"" + lastname + "\" limit 1;";
-  DatabaseResult *result = namedb->Query(query);
+  std::string query =
+      "select fakefirstname, fakelastname, skincolor, hairstyle, haircolor, height, weight, "
+      "formationorder, base_stat_offset, profile_xml from playernames where firstname = " +
+      SqlString(firstname) + " and lastname = " + SqlString(lastname) + " limit 1;";
+  auto result = namedb->Query(query);
   if (result->data.size() > 0 && atoi(result->data.at(0).at(2).c_str()) != 0) {
-    fakefirstname_ret =       result->data.at(0).at(0);
-    fakelastname_ret =        result->data.at(0).at(1);
-    skincolor_ret =      atoi(result->data.at(0).at(2).c_str());
-    hairstyle_ret =           result->data.at(0).at(3);
-    haircolor_ret =           result->data.at(0).at(4);
-    height_ret =         atof(result->data.at(0).at(5).c_str());
-    weight_ret =         atof(result->data.at(0).at(6).c_str());
+    fakefirstname_ret = result->data.at(0).at(0);
+    fakelastname_ret = result->data.at(0).at(1);
+    skincolor_ret = atoi(result->data.at(0).at(2).c_str());
+    hairstyle_ret = result->data.at(0).at(3);
+    haircolor_ret = result->data.at(0).at(4);
+    height_ret = atof(result->data.at(0).at(5).c_str());
+    weight_ret = atof(result->data.at(0).at(6).c_str());
     formationorder_ret = atoi(result->data.at(0).at(7).c_str());
     baseStatOffset_ret = atof(result->data.at(0).at(8).c_str());
-    customProfile_ret =       result->data.at(0).at(9);
+    customProfile_ret = result->data.at(0).at(9);
   } else {
-    fakefirstname_ret =  firstname;
-    fakelastname_ret =   lastname;
+    fakefirstname_ret = firstname;
+    fakelastname_ret = lastname;
     formationorder_ret = -1;
     baseStatOffset_ret = 0.0f;
-    customProfile_ret =  "";
+    customProfile_ret = "";
   }
 
-  if (skincolor_ret == 0)  skincolor_ret = int(round(random(1, 4)));
-  if (hairstyle_ret == "") hairstyle_ret = "short01";
-  if (haircolor_ret == "") haircolor_ret = "black";
-  if (height_ret == 0.0f)  height_ret    = 1.8f;
-  if (weight_ret == 0.0f)  weight_ret    = 80.0f;
-
-  delete result;
+  if (skincolor_ret == 0)
+    skincolor_ret = int(round(random(1, 4)));
+  if (hairstyle_ret == "")
+    hairstyle_ret = "short01";
+  if (haircolor_ret == "")
+    haircolor_ret = "black";
+  if (height_ret == 0.0f)
+    height_ret = 1.8f;
+  if (weight_ret == 0.0f)
+    weight_ret = 80.0f;
 }
 
-
-/* THIS CODE IMPORTS FM DATABASES, exported with some FM management tool, of which I forgot the name. maybe it's useful for somebody. */
+/* THIS CODE IMPORTS FM DATABASES, exported with some FM management tool, of which I forgot the
+ * name. maybe it's useful for somebody. */
 
 bool MainMenuPage::GoImportDB() {
-
-  Database *namedb = new Database();
+  Database* namedb = new Database();
   bool dbSuccess = namedb->Load("databases/names.sqlite");
-  if (!dbSuccess) Log(e_FatalError, "MainMenuPage", "GoImportDB", "Could not open database");
-
+  if (!dbSuccess)
+    Log(e_FatalError, "MainMenuPage", "GoImportDB", "Could not open database");
 
   // create database
 
@@ -330,239 +611,113 @@ bool MainMenuPage::GoImportDB() {
   query += "drop table tournaments;";
   query += "drop table tournamentdata;";
   query += "commit;";
-  DatabaseResult *result = GetDB()->Query(query);
-  delete result;
+  auto result = GetDB()->Query(query);
 
-  query = "vacuum;"; // *woooooshhh* http://www.sqlite.org/lang_vacuum.html
+  query = "vacuum;";  // *woooooshhh* http://www.sqlite.org/lang_vacuum.html
   result = GetDB()->Query(query);
-  delete result;
 
-  result = GetDB()->Query("CREATE TABLE regions(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                               "name VARCHAR(64));");
-  delete result;
+  result = GetDB()->Query(
+      "CREATE TABLE regions(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "name VARCHAR(64));");
 
-  result = GetDB()->Query("CREATE TABLE countries(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                                 "region_id INTEGER, "
-                                                 "name VARCHAR(64));");
-  delete result;
+  result = GetDB()->Query(
+      "CREATE TABLE countries(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "region_id INTEGER, "
+      "name VARCHAR(64));");
 
-  result = GetDB()->Query("CREATE TABLE leagues(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                               "country_id INTEGER, "
-                                               "name VARCHAR(64), "
-                                               "logo_url VARCHAR(512));");
-  delete result;
+  result = GetDB()->Query(
+      "CREATE TABLE leagues(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "country_id INTEGER, "
+      "name VARCHAR(64), "
+      "logo_url VARCHAR(512));");
 
-  result = GetDB()->Query("CREATE TABLE teams(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                             "league_id INTEGER, "
-                                             "name VARCHAR(64), "
-                                             "logo_url VARCHAR(512), "
-                                             "kit_url VARCHAR(512), "
-                                             "formation_xml TEXT, "
-                                             "formation_factory_xml TEXT, "
-                                             "tactics_xml TEXT, "
-                                             "tactics_factory_xml TEXT, "
-                                             "shortname VARCHAR(3), "
-                                             "color1 VARCHAR(16), "
-                                             "color2 VARCHAR(16));");
-  delete result;
+  result = GetDB()->Query(
+      "CREATE TABLE teams(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "league_id INTEGER, "
+      "name VARCHAR(64), "
+      "logo_url VARCHAR(512), "
+      "kit_url VARCHAR(512), "
+      "formation_xml TEXT, "
+      "formation_factory_xml TEXT, "
+      "tactics_xml TEXT, "
+      "tactics_factory_xml TEXT, "
+      "shortname VARCHAR(3), "
+      "color1 VARCHAR(16), "
+      "color2 VARCHAR(16));");
 
-  result = GetDB()->Query("CREATE TABLE players(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                               "team_id INTEGER, "
-                                               "nationalteam_id INTEGER, "
-                                               "firstname VARCHAR(64), "
-                                               "lastname VARCHAR(64), "
-                                               "role VARCHAR(32), "
-                                               "age INTEGER, "
-                                               "base_stat FLOAT, "
-                                               "profile_xml TEXT, "
-                                               "skincolor INTEGER, "
-                                               "hairstyle VARCHAR(64), "
-                                               "haircolor VARCHAR(64), "
-                                               "height FLOAT, "
-                                               "weight FLOAT, "
-                                               "formationorder INTEGER, "
-                                               "nationalteamformationorder INTEGER);");
-  delete result;
+  result = GetDB()->Query(
+      "CREATE TABLE players(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "team_id INTEGER, "
+      "nationalteam_id INTEGER, "
+      "firstname VARCHAR(64), "
+      "lastname VARCHAR(64), "
+      "role VARCHAR(32), "
+      "age INTEGER, "
+      "base_stat FLOAT, "
+      "profile_xml TEXT, "
+      "skincolor INTEGER, "
+      "hairstyle VARCHAR(64), "
+      "haircolor VARCHAR(64), "
+      "height FLOAT, "
+      "weight FLOAT, "
+      "formationorder INTEGER, "
+      "nationalteamformationorder INTEGER);");
 
-  result = GetDB()->Query("CREATE TABLE tournaments(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                                   "name VARCHAR(64), "
-                                                   "location_type INTEGER, " // 1 = regional, 2 = national, 3 = league
-                                                   "location_id INTEGER, "
-                                                   "has_knockoutphase INTEGER, "
-                                                   "has_groupphase INTEGER, "
-                                                   "prizemoney INTEGER);");
-  delete result;
+  result = GetDB()->Query(
+      "CREATE TABLE tournaments(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "name VARCHAR(64), "
+      "location_type INTEGER, "  // 1 = regional, 2 = national, 3 = league
+      "location_id INTEGER, "
+      "has_knockoutphase INTEGER, "
+      "has_groupphase INTEGER, "
+      "prizemoney INTEGER);");
 
-  result = GetDB()->Query("CREATE TABLE tournamentdata(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                                      "tournament_id INTEGER, "
-                                                      "year INTEGER, "
-                                                      "xmldata TEXT);");
-  delete result;
-
-  //std::string defaultStats = "<defense>0.8</defense><bodybalance>0.8</bodybalance><acceleration>0.6</acceleration><velocity>0.6</velocity><agility>0.8</agility><reaction>1.0</reaction><ballcontrol>0.8</ballcontrol><dribblevelocity>0.6</dribblevelocity><shotpower>0.8</shotpower><passtechnique>1.0</passtechnique><tactics>1.0</tactics><condition>1.0</condition>";
-  //std::string defaultFormation = "<p1><position>-1, 0</position><role>GK</role></p1><p2><position>-0.6, 0.6</position><role>LB</role></p2><p3><position>-0.7, 0.2</position><role>CB</role></p3><p4><position>-0.7, -0.2</position><role>CB</role></p4><p5><position>-0.6, -0.6</position><role>RB</role></p5><p6><position>0.0, 0.8</position><role>LM</role></p6><p7><position>0.1, 0.0</position><role>AM</role></p7><p8><position>0.0, -0.8</position><role>RM</role></p8><p9><position>0.7, 0.5</position><role>CF</role></p9><p10><position>0.8, 0.0</position><role>CF</role></p10><p11><position>0.7, -0.5</position><role>CF</role></p11>";
-
-/* possession game, high pressure
-<dribble_centermagnet>0.5</dribble_centermagnet>
-<dribble_offensiveness>0.5</dribble_offensiveness>
-
-<position_defense_depth_factor>0.3</position_defense_depth_factor>
-<position_defense_microfocus_strength>0.8</position_defense_microfocus_strength>
-<position_defense_midfieldfocus>0.8</position_defense_midfieldfocus>
-<position_defense_sidefocus_strength>0.7</position_defense_sidefocus_strength>
-<position_defense_width_factor>0.3</position_defense_width_factor>
-
-<position_offense_depth_factor>0.6</position_offense_depth_factor>
-<position_offense_microfocus_strength>0.8</position_offense_microfocus_strength>
-<position_offense_midfieldfocus>0.8</position_offense_midfieldfocus>
-<position_offense_sidefocus_strength>0.4</position_offense_sidefocus_strength>
-<position_offense_width_factor>0.6</position_offense_width_factor>
-*/
-
-/* counter
-<dribble_centermagnet>0.7</dribble_centermagnet>
-<dribble_offensiveness>0.9</dribble_offensiveness>
-
-<position_defense_depth_factor>0.3</position_defense_depth_factor>
-<position_defense_microfocus_strength>0.3</position_defense_microfocus_strength>
-<position_defense_midfieldfocus>0.2</position_defense_midfieldfocus>
-<position_defense_sidefocus_strength>0.3</position_defense_sidefocus_strength>
-<position_defense_width_factor>0.6</position_defense_width_factor>
-
-<position_offense_depth_factor>0.9</position_offense_depth_factor>
-<position_offense_microfocus_strength>0.4</position_offense_microfocus_strength>
-<position_offense_midfieldfocus>0.7</position_offense_midfieldfocus>
-<position_offense_sidefocus_strength>0.3</position_offense_sidefocus_strength>
-<position_offense_width_factor>0.3</position_offense_width_factor>
-*/
-
-/* balanced offensive
-<dribble_centermagnet>0.6</dribble_centermagnet>
-<dribble_offensiveness>0.8</dribble_offensiveness>
-
-<position_defense_depth_factor>0.6</position_defense_depth_factor>
-<position_defense_microfocus_strength>0.5</position_defense_microfocus_strength>
-<position_defense_midfieldfocus>0.7</position_defense_midfieldfocus>
-<position_defense_sidefocus_strength>0.5</position_defense_sidefocus_strength>
-<position_defense_width_factor>0.5</position_defense_width_factor>
-
-<position_offense_depth_factor>0.6</position_offense_depth_factor>
-<position_offense_microfocus_strength>0.5</position_offense_microfocus_strength>
-<position_offense_midfieldfocus>0.8</position_offense_midfieldfocus>
-<position_offense_sidefocus_strength>0.5</position_offense_sidefocus_strength>
-<position_offense_width_factor>0.7</position_offense_width_factor>
-*/
-
-/* balanced defensive
-<dribble_centermagnet>0.3</dribble_centermagnet>
-<dribble_offensiveness>0.2</dribble_offensiveness>
-
-<position_defense_depth_factor>0.4</position_defense_depth_factor>
-<position_defense_microfocus_strength>0.6</position_defense_microfocus_strength>
-<position_defense_midfieldfocus>0.3</position_defense_midfieldfocus>
-<position_defense_sidefocus_strength>0.4</position_defense_sidefocus_strength>
-<position_defense_width_factor>0.4</position_defense_width_factor>
-
-<position_offense_depth_factor>0.6</position_offense_depth_factor>
-<position_offense_microfocus_strength>0.5</position_offense_microfocus_strength>
-<position_offense_midfieldfocus>0.5</position_offense_midfieldfocus>
-<position_offense_sidefocus_strength>0.5</position_offense_sidefocus_strength>
-<position_offense_width_factor>0.5</position_offense_width_factor>
-*/
-
-
-/*
-<p1><position>-1.0,  0.0</position><role>GK</role></p1>
-<p2><position>-0.6,  0.7</position><role>LB</role></p2>
-<p3><position>-0.7,  0.2</position><role>CB</role></p3>
-<p4><position>-0.7, -0.2</position><role>CB</role></p4>
-<p5><position>-0.6, -0.7</position><role>RB</role></p5>
-<p6><position> 0.1,  0.8</position><role>LM</role></p6>
-<p7><position>-0.1,  0.0</position><role>DM</role></p7>
-<p8><position> 0.1, -0.8</position><role>RM</role></p8>
-<p9><position> 0.5,  0.0</position><role>AM</role></p9>
-<p10><position>0.8,  0.3</position><role>CF</role></p10>
-<p11><position>0.8, -0.3</position><role>CF</role></p11>
-*/
+  result = GetDB()->Query(
+      "CREATE TABLE tournamentdata(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "tournament_id INTEGER, "
+      "year INTEGER, "
+      "xmldata TEXT);");
 
   // 4-2-3-1
-  std::string defaultFormation = "<p1><position>-1.0,  0.0</position><role>GK</role></p1>"
+  std::string defaultFormation =
+      "<p1><position>-1.0,  0.0</position><role>GK</role></p1>"
 
-                                 "<p2><position>-0.7,  0.75</position><role>LB</role></p2>"
-                                 "<p3><position>-1.0,  0.25</position><role>CB</role></p3>"
-                                 "<p4><position>-1.0, -0.25</position><role>CB</role></p4>"
-                                 "<p5><position>-0.7, -0.75</position><role>RB</role></p5>"
+      "<p2><position>-0.7,  0.75</position><role>LB</role></p2>"
+      "<p3><position>-1.0,  0.25</position><role>CB</role></p3>"
+      "<p4><position>-1.0, -0.25</position><role>CB</role></p4>"
+      "<p5><position>-0.7, -0.75</position><role>RB</role></p5>"
 
-                                 "<p6><position>-0.2,  0.3</position><role>CM</role></p6>"
-                                 "<p7><position>-0.2, -0.3</position><role>CM</role></p7>"
+      "<p6><position>-0.2,  0.3</position><role>CM</role></p6>"
+      "<p7><position>-0.2, -0.3</position><role>CM</role></p7>"
 
-                                 "<p8><position> 0.7,  0.9</position><role>LM</role></p8>"
-                                 "<p9><position> 0.2,  0.0</position><role>AM</role></p9>"
-                                 "<p10><position>0.7, -0.9</position><role>RM</role></p10>"
+      "<p8><position> 0.7,  0.9</position><role>LM</role></p8>"
+      "<p9><position> 0.2,  0.0</position><role>AM</role></p9>"
+      "<p10><position>0.7, -0.9</position><role>RM</role></p10>"
 
-                                 "<p11><position>1.0,  0.0</position><role>CF</role></p11>";
+      "<p11><position>1.0,  0.0</position><role>CF</role></p11>";
 
-  //<p1><position>-1.0,  0.0</position><role>GK</role></p1><p2><position>-0.7,  0.75</position><role>LB</role></p2><p3><position>-1.0,  0.25</position><role>CB</role></p3><p4><position>-1.0, -0.25</position><role>CB</role></p4><p5><position>-0.7, -0.75</position><role>RB</role></p5><p6><position>-0.2,  0.3</position><role>CM</role></p6><p7><position>-0.2, -0.3</position><role>CM</role></p7><p8><position> 0.7,  0.9</position><role>LM</role></p8><p9><position> 0.2,  0.0</position><role>AM</role></p9><p10><position>0.7, -0.9</position><role>RM</role></p10><p11><position>1.0,  0.0</position><role>CF</role></p11>
+  std::string defaultTactics =
+      "<position_offense_depth_factor>0.5</position_offense_depth_factor>"
+      "<position_defense_depth_factor>0.5</position_defense_depth_factor>"
+      "<position_offense_width_factor>0.5</position_offense_width_factor>"
+      "<position_defense_width_factor>0.5</position_defense_width_factor>"
 
-  /*
-  // 4-4-2
-  std::string defaultFormation = "<p1><position>-1.0,  0.0</position><role>GK</role></p1>"
+      "<position_offense_midfieldfocus>0.5</position_offense_midfieldfocus>"
+      "<position_defense_midfieldfocus>0.5</position_defense_midfieldfocus>"
 
-                                 "<p2><position>-0.7,  0.6</position><role>LB</role></p2>"
-                                 "<p3><position>-0.8,  0.2</position><role>CB</role></p3>"
-                                 "<p4><position>-0.8, -0.2</position><role>CB</role></p4>"
-                                 "<p5><position>-0.7, -0.6</position><role>RB</role></p5>"
+      "<position_offense_sidefocus_strength>0.5</position_offense_sidefocus_strength>"
+      "<position_defense_sidefocus_strength>0.5</position_defense_sidefocus_strength>"
 
-                                 "<p6><position> 0.0,  0.9</position><role>LM</role></p6>"
-                                 "<p7><position>-0.3,  0.0</position><role>DM</role></p7>"
-                                 "<p8><position> 0.0, -0.9</position><role>RM</role></p8>"
-                                 "<p9><position> 0.3,  0.0</position><role>AM</role></p9>"
+      "<position_offense_microfocus_strength>0.5</position_offense_microfocus_strength>"
+      "<position_defense_microfocus_strength>0.5</position_defense_microfocus_strength>"
 
-                                 "<p10><position>0.8,  0.3</position><role>CF</role></p10>"
-                                 "<p11><position>0.8, -0.3</position><role>CF</role></p11>";
-
-  //<p1><position>-1.0,  0.0</position><role>GK</role></p1><p2><position>-0.7,  0.6</position><role>LB</role></p2><p3><position>-0.8,  0.2</position><role>CB</role></p3><p4><position>-0.8, -0.2</position><role>CB</role></p4><p5><position>-0.7, -0.6</position><role>RB</role></p5><p6><position> 0.0,  0.9</position><role>LM</role></p6><p7><position>-0.3,  0.0</position><role>DM</role></p7><p8><position> 0.0, -0.9</position><role>RM</role></p8><p9><position> 0.3,  0.0</position><role>AM</role></p9><p10><position>0.8,  0.3</position><role>CF</role></p10><p11><position>0.8, -0.3</position><role>CF</role></p11>
-  */
-
-  /*
-  // 4-3-3
-  std::string defaultFormation = "<p1><position> -1.0,  0.0 </position><role>GK</role></p1>"
-
-                                 "<p2><position> -0.7,  0.75</position><role>LB</role></p2>"
-                                 "<p3><position> -1.0,  0.25</position><role>CB</role></p3>"
-                                 "<p4><position> -1.0, -0.25</position><role>CB</role></p4>"
-                                 "<p5><position> -0.7, -0.75</position><role>RB</role></p5>"
-
-                                 "<p6><position>  0.0,  0.5 </position><role>CM</role></p6>"
-                                 "<p7><position> -0.2,  0.0 </position><role>CM</role></p7>"
-                                 "<p8><position>  0.0, -0.5 </position><role>CM</role></p8>"
-
-                                 "<p9><position>  0.6,  0.75 </position><role>LM</role></p9>"
-                                 "<p10><position> 1.0,  0.0 </position><role>CF</role></p10>"
-                                 "<p11><position> 0.6, -0.75 </position><role>RM</role></p11>";
-
-  //<p1><position> -1.0,  0.0 </position><role>GK</role></p1><p2><position> -0.7,  0.75</position><role>LB</role></p2><p3><position> -1.0,  0.25</position><role>CB</role></p3><p4><position> -1.0, -0.25</position><role>CB</role></p4><p5><position> -0.7, -0.75</position><role>RB</role></p5><p6><position>  0.0,  0.5 </position><role>CM</role></p6><p7><position> -0.2,  0.0 </position><role>CM</role></p7><p8><position>  0.0, -0.5 </position><role>CM</role></p8><p9><position>  0.6,  0.75 </position><role>LM</role></p9><p10><position> 1.0,  0.0 </position><role>CF</role></p10><p11><position> 0.6, -0.75 </position><role>RM</role></p11>
-  */
-
-  std::string defaultTactics = "<position_offense_depth_factor>0.5</position_offense_depth_factor>"
-                               "<position_defense_depth_factor>0.5</position_defense_depth_factor>"
-                               "<position_offense_width_factor>0.5</position_offense_width_factor>"
-                               "<position_defense_width_factor>0.5</position_defense_width_factor>"
-
-                               "<position_offense_midfieldfocus>0.5</position_offense_midfieldfocus>"
-                               "<position_defense_midfieldfocus>0.5</position_defense_midfieldfocus>"
-
-                               "<position_offense_sidefocus_strength>0.5</position_offense_sidefocus_strength>"
-                               "<position_defense_sidefocus_strength>0.5</position_defense_sidefocus_strength>"
-
-                               "<position_offense_microfocus_strength>0.5</position_offense_microfocus_strength>"
-                               "<position_defense_microfocus_strength>0.5</position_defense_microfocus_strength>"
-
-                               "<dribble_offensiveness>0.5</dribble_offensiveness>"
-                               "<dribble_centermagnet>0.5</dribble_centermagnet>";
+      "<dribble_offensiveness>0.5</dribble_offensiveness>"
+      "<dribble_centermagnet>0.5</dribble_centermagnet>"
+      "<counter_attack>0.5</counter_attack>"
+      "<support_distance>0.5</support_distance>"
+      "<team_pressure>0.5</team_pressure>";
 
   InitDefaultProfiles();
-
 
   // LOAD CLUBS
 
@@ -577,13 +732,14 @@ bool MainMenuPage::GoImportDB() {
   std::map<std::string, CountryCompetition> uniqueCompetitions;
 
   int id = 1;
-  for (unsigned int i = 1; i < data.size(); i++) { // (skip header)
+  for (unsigned int i = 1; i < data.size(); i++) {  // (skip header)
     std::vector<std::string> tokens;
     tokenize(data.at(i), tokens, ";");
 
     for (unsigned int t = 0; t < tokens.size(); t++) {
-      tokens.at(t).erase( std::remove(tokens.at(t).begin(), tokens.at(t).end(), '\"'), tokens.at(t).end() );
-      //printf("[%s]", tokens.at(t).c_str());
+      tokens.at(t).erase(std::remove(tokens.at(t).begin(), tokens.at(t).end(), '\"'),
+                         tokens.at(t).end());
+      // printf("[%s]", tokens.at(t).c_str());
     }
 
     Club club;
@@ -597,99 +753,106 @@ bool MainMenuPage::GoImportDB() {
 
     bool addClub = false;
 
-    /* public beta 1
-    if ((club.country.compare("England") == 0 && club.competition.compare("Premier Division") == 0) ||
-        (club.country.compare("Germany") == 0 && club.competition.compare("First Division") == 0) ||
-        (club.country.compare("Holland") == 0 && club.competition.compare("Eredivisie") == 0) ||
-        (club.country.compare("Spain")   == 0 && club.competition.compare("LIGA BBVA") == 0)) {
-      addClub = true;
-    }
-    */
-
     // public beta 2
-    if (club.name.compare("PSV") == 0) addClub = true;
-    if (club.name.compare("Ajax") == 0) addClub = true;
-    if (club.name.compare("Dortmund") == 0) addClub = true;
-    if (club.name.compare("Bayern") == 0) addClub = true;
-    if (club.name.compare("R. Madrid") == 0) addClub = true;
-    if (club.name.compare("Barcelona") == 0) addClub = true;
-    if (club.name.compare("Arsenal") == 0) addClub = true;
-    if (club.name.compare("Man Utd") == 0) addClub = true;
+    if (club.name == "PSV")
+      addClub = true;
+    if (club.name == "Ajax")
+      addClub = true;
+    if (club.name == "Dortmund")
+      addClub = true;
+    if (club.name == "Bayern")
+      addClub = true;
+    if (club.name == "R. Madrid")
+      addClub = true;
+    if (club.name == "Barcelona")
+      addClub = true;
+    if (club.name == "Arsenal")
+      addClub = true;
+    if (club.name == "Man Utd")
+      addClub = true;
 
-    //printf("club: %s, rep: %i\n", club.name.c_str(), club.reputation);
+    // printf("club: %s, rep: %i\n", club.name.c_str(), club.reputation);
 
-    if (addClub && club.status.compare("Professional") == 0) {
-      countries.insert(tokens.at(1)); // sets only support unique elements so there'll be no dupes
+    if (addClub && club.status == "Professional") {
+      countries.insert(tokens.at(1));  // sets only support unique elements so there'll be no dupes
 
       CountryCompetition cc;
       cc.country = tokens.at(1);
       cc.competition = tokens.at(2);
-      uniqueCompetitions.insert(std::pair<std::string, CountryCompetition>(tokens.at(1) + tokens.at(2), cc)); // dito with map indices
+      uniqueCompetitions.insert(std::pair<std::string, CountryCompetition>(
+          tokens.at(1) + tokens.at(2), cc));  // dito with map indices
 
       clubs.push_back(club);
       id++;
     }
 
-    //printf("\n");
+    // printf("\n");
   }
-
 
   // insert region(s)
 
-  query = "begin transaction; delete from regions; delete from sqlite_sequence where name=\"regions\";";
+  query =
+      "begin transaction; delete from regions; delete from sqlite_sequence where name=\"regions\";";
   query += "insert into regions (name) values (\"Europe\");";
   query += "commit;";
   result = GetDB()->Query(query);
-  delete result;
-
 
   // insert countries
 
   // map for looking up countries' db indices later
   std::map<std::string, int> countryIDs;
 
-  query = "begin transaction; delete from countries; delete from sqlite_sequence where name=\"countries\";";
+  query =
+      "begin transaction; delete from countries; delete from sqlite_sequence where "
+      "name=\"countries\";";
   std::set<std::string>::iterator iter = countries.begin();
   for (unsigned int i = 0; i < countries.size(); i++) {
-    query += "insert into countries (id, region_id, name) values (" + int_to_str(i + 1) + ", 1, \"" + *iter + "\");";
+    query += "insert into countries (id, region_id, name) values (" + int_to_str(i + 1) + ", 1, " +
+             SqlString(*iter) + ");";
     countryIDs.insert(std::pair<std::string, int>(*iter, i + 1));
     iter++;
   }
   query += "commit;";
   result = GetDB()->Query(query);
-  delete result;
-
 
   // insert leagues
 
   // map for looking up competitions' db indices later
   std::map<std::string, int> competitionIDs;
 
-  query = "begin transaction; delete from leagues; delete from sqlite_sequence where name=\"leagues\";";
-  std::map<std::string, CountryCompetition>::iterator compIter = uniqueCompetitions.begin();
+  query =
+      "begin transaction; delete from leagues; delete from sqlite_sequence where name=\"leagues\";";
+  auto compIter = uniqueCompetitions.begin();
   id = 1;
   while (compIter != uniqueCompetitions.end()) {
     std::map<std::string, int>::iterator countryIter = countryIDs.find(compIter->second.country);
     if (countryIter != countryIDs.end()) {
       int countryID = countryIter->second;
-      std::string competitionName = RenameLeague(namedb, compIter->second.competition, "faketargetname");
+      std::string competitionName =
+          RenameLeague(namedb, compIter->second.competition, "faketargetname");
       std::string strippedCompetitionName = StripString(competitionName);
-      std::string competitionFilename = RenameLeague(namedb, compIter->second.competition, "targetname");
+      std::string competitionFilename =
+          RenameLeague(namedb, compIter->second.competition, "targetname");
       std::string strippedCompetitionFilename = StripString(competitionFilename);
-      std::transform(strippedCompetitionFilename.begin(), strippedCompetitionFilename.end(), strippedCompetitionFilename.begin(), ::tolower);
+      std::transform(strippedCompetitionFilename.begin(), strippedCompetitionFilename.end(),
+                     strippedCompetitionFilename.begin(), ::tolower);
 
-      printf("adding league: orig %s - renamed %s - stripped %s\n", compIter->second.competition.c_str(), competitionName.c_str(), strippedCompetitionName.c_str());
+      printf("adding league: orig %s - renamed %s - stripped %s\n",
+             compIter->second.competition.c_str(), competitionName.c_str(),
+             strippedCompetitionName.c_str());
 
-      query += "insert into leagues (id, name, logo_url, country_id) values (" + int_to_str(id) + ", \"" + competitionName + "\", \"images_competitions/" + strippedCompetitionFilename + ".png\", " + int_to_str(countryID) + ");";
-      competitionIDs.insert(std::pair<std::string, int>(compIter->second.country + compIter->second.competition, id));
+      query += "insert into leagues (id, name, logo_url, country_id) values (" + int_to_str(id) +
+               ", " + SqlString(competitionName) + ", " +
+               SqlString("images_competitions/" + strippedCompetitionFilename + ".png") + ", " +
+               int_to_str(countryID) + ");";
+      competitionIDs.insert(
+          std::pair<std::string, int>(compIter->second.country + compIter->second.competition, id));
       id++;
     }
     compIter++;
   }
   query += "commit;";
   result = GetDB()->Query(query);
-  delete result;
-
 
   // insert clubs
 
@@ -701,27 +864,47 @@ bool MainMenuPage::GoImportDB() {
     int competitionID = competitionIDs.find(clubs.at(i).country + clubs.at(i).competition)->second;
     std::string competitionFilename = RenameLeague(namedb, clubs.at(i).competition, "targetname");
     std::string strippedCompetitionFilename = StripString(competitionFilename);
-    std::transform(strippedCompetitionFilename.begin(), strippedCompetitionFilename.end(), strippedCompetitionFilename.begin(), ::tolower);
+    std::transform(strippedCompetitionFilename.begin(), strippedCompetitionFilename.end(),
+                   strippedCompetitionFilename.begin(), ::tolower);
     std::string clubName = RenameClub(namedb, clubs.at(i).name, "faketargetname");
     std::string strippedClubName = StripString(clubName);
     std::string clubFilename = RenameClub(namedb, clubs.at(i).name, "targetname");
     std::string strippedClubFilename = StripString(clubFilename);
-    std::transform(strippedClubFilename.begin(), strippedClubFilename.end(), strippedClubFilename.begin(), ::tolower);
+    std::transform(strippedClubFilename.begin(), strippedClubFilename.end(),
+                   strippedClubFilename.begin(), ::tolower);
 
-    printf("adding team: orig %s - renamed %s - stripped %s\n", clubs.at(i).name.c_str(), clubName.c_str(), strippedClubName.c_str());
+    printf("adding team: orig %s - renamed %s - stripped %s\n", clubs.at(i).name.c_str(),
+           clubName.c_str(), strippedClubName.c_str());
 
     ClubData clubData = GetClubData(namedb, clubs.at(i).name);
-    if (clubData.formation_xml.compare("") == 0) clubData.formation_xml = defaultFormation;
-    if (clubData.tactics_xml.compare("") == 0) clubData.tactics_xml = defaultTactics;
+    if (clubData.formation_xml.empty())
+      clubData.formation_xml = defaultFormation;
+    if (clubData.tactics_xml.empty())
+      clubData.tactics_xml = defaultTactics;
 
-    //query += "insert into teams (id, league_id, name, logo_url, kit_url, formation) values (" + int_to_str(clubs.at(i).id) + ", " + int_to_str(competitionID) + ", \"" + clubs.at(i).name + "\", \"images_teams/" + strippedCompetition + "/" + strippedTeam + "_logo.png\", \"images_teams/" + strippedCompetition + "/" + strippedTeam + "_kit.png\", \"" + defaultFormation + "\");";
-    query += "insert into teams (id, league_id, name, logo_url, kit_url, formation_xml, formation_factory_xml, tactics_xml, tactics_factory_xml, shortname, color1, color2) values (" + int_to_str(clubs.at(i).id) + ", " + int_to_str(competitionID) + ", \"" + clubName + "\", \"images_teams/" + strippedCompetitionFilename + "/" + strippedClubFilename + "_logo.png\", \"images_teams/" + strippedCompetitionFilename + "/" + strippedClubFilename + "\", \"" + clubData.formation_xml + "\", \"" + clubData.formation_xml + "\", \"" + clubData.tactics_xml + "\", \"" + clubData.tactics_xml + "\", \"" + clubData.shortName + "\", \"" + clubData.color1 + "\", \"" + clubData.color2 + "\");";
+    // query += "insert into teams (id, league_id, name, logo_url, kit_url, formation) values (" +
+    // int_to_str(clubs.at(i).id) + ", " + int_to_str(competitionID) + ", \"" + clubs.at(i).name +
+    // "\", \"images_teams/" + strippedCompetition + "/" + strippedTeam + "_logo.png\",
+    // \"images_teams/" + strippedCompetition + "/" + strippedTeam + "_kit.png\", \"" +
+    // defaultFormation + "\");";
+    query +=
+        "insert into teams (id, league_id, name, logo_url, kit_url, formation_xml, "
+        "formation_factory_xml, tactics_xml, tactics_factory_xml, shortname, color1, color2) "
+        "values (" +
+        int_to_str(clubs.at(i).id) + ", " + int_to_str(competitionID) + ", " + SqlString(clubName) +
+        ", " +
+        SqlString("images_teams/" + strippedCompetitionFilename + "/" + strippedClubFilename +
+                  "_logo.png") +
+        ", " +
+        SqlString("images_teams/" + strippedCompetitionFilename + "/" + strippedClubFilename) +
+        ", " + SqlString(clubData.formation_xml) + ", " + SqlString(clubData.formation_xml) + ", " +
+        SqlString(clubData.tactics_xml) + ", " + SqlString(clubData.tactics_xml) + ", " +
+        SqlString(clubData.shortName) + ", " + SqlString(clubData.color1) + ", " +
+        SqlString(clubData.color2) + ");";
     clubIDs.insert(std::pair<std::string, int>(clubs.at(i).name, clubs.at(i).id));
   }
   query += "commit;";
   result = GetDB()->Query(query);
-  delete result;
-
 
   // insert players
 
@@ -732,25 +915,28 @@ bool MainMenuPage::GoImportDB() {
 
   int playerID = 1;
 
-  for (unsigned int i = 1; i < players.size(); i++) { // (skip header)
+  for (unsigned int i = 1; i < players.size(); i++) {  // (skip header)
     std::vector<std::string> tokens;
     tokenize(players.at(i), tokens, ";");
 
     for (unsigned int t = 0; t < tokens.size(); t++) {
       // remove quotes
-      tokens.at(t).erase( std::remove(tokens.at(t).begin(), tokens.at(t).end(), '\"'), tokens.at(t).end() );
-      //printf("[%s]", tokens.at(t).c_str());
+      tokens.at(t).erase(std::remove(tokens.at(t).begin(), tokens.at(t).end(), '\"'),
+                         tokens.at(t).end());
+      // printf("[%s]", tokens.at(t).c_str());
     }
 
     // remove commas (from value)
-    tokens.at(11).erase( std::remove(tokens.at(11).begin(), tokens.at(11).end(), ','), tokens.at(11).end() );
+    tokens.at(11).erase(std::remove(tokens.at(11).begin(), tokens.at(11).end(), ','),
+                        tokens.at(11).end());
 
     PlayerImport player;
     player.age = atoi(tokens.at(7).c_str());
     player.value = atoi(tokens.at(11).c_str());
 
     std::map<std::string, int>::iterator club = clubIDs.find(tokens.at(3));
-    if (club != clubIDs.end() && player.value > 0 && player.age >= 15 && player.age <= 40) { // only add player if he's with a club that's in the database
+    if (club != clubIDs.end() && player.value > 0 && player.age >= 15 &&
+        player.age <= 40) {  // only add player if he's with a club that's in the database
 
       player.id = playerID;
       playerID++;
@@ -758,7 +944,7 @@ bool MainMenuPage::GoImportDB() {
       std::string name = tokens.at(0);
       player.nationality = tokens.at(1);
       player.position = tokens.at(2);
-      //printf("%i\n", player.value);
+      // printf("%i\n", player.value);
 
       // name into first/last name
       std::size_t comma = name.find_first_of(",");
@@ -769,13 +955,12 @@ bool MainMenuPage::GoImportDB() {
         player.lastName = name.substr(0, comma);
         player.firstName = name.substr(comma + 2, name.size() - (comma + 2));
       }
-      //printf("[%s][%s]\n", player.firstName.c_str(), player.lastName.c_str());
+      // printf("[%s][%s]\n", player.firstName.c_str(), player.lastName.c_str());
 
       player.clubID = club->second;
 
-
       // save age/value for making statistics
-      //XX Import_AgeValueStatsAdd(player.age, player.value);
+      // XX Import_AgeValueStatsAdd(player.age, player.value);
 
       std::vector<WeightedPosition> weightedPositions;
       GetWeightedPositions(player.position, weightedPositions);
@@ -784,12 +969,17 @@ bool MainMenuPage::GoImportDB() {
       std::vector<Stat> profileStats;
       GetDefaultProfile(weightedPositions, profileStats);
 
-      //XX float averageStat = GetAverageStatFromValue(player.age, player.value);
-      player.averageStat = NormalizedClamp(atof(tokens.at(13).substr(0, 5).c_str()) * 1.0f - 10, 0, 100); // don't go full range - the hypothetical best player ever doesn't exist in real life (yet? ;))
-      player.averageStartStat = NormalizedClamp(atof(tokens.at(14).substr(0, 5).c_str()) * 1.0f - 10, 0, 100);
+      // XX float averageStat = GetAverageStatFromValue(player.age, player.value);
+      player.averageStat =
+          NormalizedClamp(atof(tokens.at(13).substr(0, 5).c_str()) * 1.0f - 10, 0,
+                          100);  // don't go full range - the hypothetical best player ever doesn't
+                                 // exist in real life (yet? ;))
+      player.averageStartStat =
+          NormalizedClamp(atof(tokens.at(14).substr(0, 5).c_str()) * 1.0f - 10, 0, 100);
       // youngsters are underrated in FM db
       player.averageStat *= 1.0f - curve(NormalizedClamp(abs(player.age - 18), 0, 10), 1.0f) * 0.1f;
-      player.averageStartStat *= 1.0f - curve(NormalizedClamp(abs(player.age - 18), 0, 10), 1.0f) * 0.1f;
+      player.averageStartStat *=
+          1.0f - curve(NormalizedClamp(abs(player.age - 18), 0, 10), 1.0f) * 0.1f;
 
       player.profileStats = profileStats;
 
@@ -798,21 +988,22 @@ bool MainMenuPage::GoImportDB() {
     }
   }
 
-  //Import_ProcessAgeValueStats();
-  //XX float averageStatAt15 = averageStatPerAge.find(15)->second;
+  // Import_ProcessAgeValueStats();
+  // XX float averageStatAt15 = averageStatPerAge.find(15)->second;
 
   std::map<float, int> bestYoungPlayersMap;
 
-  query = "begin transaction; delete from players; delete from sqlite_sequence where name=\"players\";";
+  query =
+      "begin transaction; delete from players; delete from sqlite_sequence where name=\"players\";";
   for (unsigned int i = 0; i < importedPlayers.size(); i++) {
+    PlayerImport& player = importedPlayers.at(i);
 
-    PlayerImport &player = importedPlayers.at(i);
-
-    //XX float averageStatAtCurrentAge = averageStatPerAge.find(player.age)->second;
-    //XX player.averageStartStat = (player.averageStat / averageStatAtCurrentAge) * averageStatAt15;
-    //float averageStartStat = ((player.averageStat / averageStatAtCurrentAge * 0.7) + player.averageStat * 0.3) * averageStatAt15;
-    //float averageStartStat = player.averageStat * averageStatAt15;
-    //printf("stat: %f (%f), age: %i (%s)\n", player.averageStartStat, player.averageStat, player.age, player.lastName.c_str());
+    // XX float averageStatAtCurrentAge = averageStatPerAge.find(player.age)->second;
+    // XX player.averageStartStat = (player.averageStat / averageStatAtCurrentAge) *
+    // averageStatAt15; float averageStartStat = ((player.averageStat / averageStatAtCurrentAge *
+    // 0.7) + player.averageStat * 0.3) * averageStatAt15; float averageStartStat =
+    // player.averageStat * averageStatAt15; printf("stat: %f (%f), age: %i (%s)\n",
+    // player.averageStartStat, player.averageStat, player.age, player.lastName.c_str());
 
     /*
     // TMP HAX, this should be done 'realtime' ingame
@@ -820,7 +1011,8 @@ bool MainMenuPage::GoImportDB() {
       //player.profileStats.at(j).value *= player.averageStartStat;
       //player.profileStats.at(j).value = GetIndividualStat(player.profileStats.at(j).value)
 
-      player.profileStats.at(j).value = GetIndividualStat(player.averageStat, player.profileStats.at(j).value, player.age);
+      player.profileStats.at(j).value = GetIndividualStat(player.averageStat,
+    player.profileStats.at(j).value, player.age);
     }
     */
 
@@ -837,8 +1029,11 @@ bool MainMenuPage::GoImportDB() {
     signed int formationOrder = -1;
     float baseStatOffset;
     std::string customProfileXML;
-    GetPlayerData(namedb, player.firstName, player.lastName, firstName, lastName, skinColor, hairStyle, hairColor, height, weight, formationOrder, baseStatOffset, customProfileXML);
-    if (customProfileXML.size() > 0) statsString = customProfileXML;
+    GetPlayerData(namedb, player.firstName, player.lastName, firstName, lastName, skinColor,
+                  hairStyle, hairColor, height, weight, formationOrder, baseStatOffset,
+                  customProfileXML);
+    if (customProfileXML.size() > 0)
+      statsString = customProfileXML;
     player.averageStartStat = clamp(player.averageStartStat + baseStatOffset, 0.01f, 1.0f);
     player.averageStat = clamp(player.averageStat + baseStatOffset, 0.01f, 1.0f);
 
@@ -846,19 +1041,31 @@ bool MainMenuPage::GoImportDB() {
 
     printf("converted: %s to %s\n", player.lastName.c_str(), lastName.c_str());
 
-    //printf("profilestring: %s\n", statsString.c_str());
+    // printf("profilestring: %s\n", statsString.c_str());
 
-    query += (std::string)("insert into players (id, firstname, lastname, team_id, role, formationorder, age, base_stat, profile_xml, skincolor, hairstyle, haircolor, height, weight, nationalteam_id, nationalteamformationorder) values ") +
-             (std::string)("(" + int_to_str(player.id) + ", \"" + firstName + "\", \"" + lastName + "\", " + int_to_str(player.clubID) + ", \"" + player.position + "\", " + int_to_str(formationOrder) + ", " + int_to_str(player.age) + ", " + real_to_str(player.averageStartStat) + ", \"" + statsString + "\", " + int_to_str(skinColor) + ", \"" + hairStyle + "\", \"" + hairColor + "\", " + real_to_str(height) + ", " + real_to_str(weight) + ", -1, -1);");
+    query +=
+        (std::string)(
+            "insert into players (id, firstname, lastname, team_id, role, formationorder, age, "
+            "base_stat, profile_xml, skincolor, hairstyle, haircolor, height, weight, "
+            "nationalteam_id, nationalteamformationorder) values ") +
+        (std::string)("(" + int_to_str(player.id) + ", " + SqlString(firstName) + ", " +
+                      SqlString(lastName) + ", " + int_to_str(player.clubID) + ", " +
+                      SqlString(player.position) + ", " + int_to_str(formationOrder) + ", " +
+                      int_to_str(player.age) + ", " + real_to_str(player.averageStartStat) + ", " +
+                      SqlString(statsString) + ", " + int_to_str(skinColor) + ", " +
+                      SqlString(hairStyle) + ", " + SqlString(hairColor) + ", " +
+                      real_to_str(height) + ", " + real_to_str(weight) + ", -1, -1);");
   }
   query += "commit;";
   result = GetDB()->Query(query);
-  delete result;
 
   printf("WORST YOUNGSTERS HALL OF SHAME\n");
-  std::map<float, int>::iterator bestYoungPlayersIter = bestYoungPlayersMap.begin();
+  auto bestYoungPlayersIter = bestYoungPlayersMap.begin();
   for (int i = 0; i < 30; i++) {
-    printf("%f (current: %f, age %i): %s\n", bestYoungPlayersIter->first, importedPlayers.at(bestYoungPlayersIter->second).averageStat, importedPlayers.at(bestYoungPlayersIter->second).age, importedPlayers.at(bestYoungPlayersIter->second).lastName.c_str());
+    printf("%f (current: %f, age %i): %s\n", bestYoungPlayersIter->first,
+           importedPlayers.at(bestYoungPlayersIter->second).averageStat,
+           importedPlayers.at(bestYoungPlayersIter->second).age,
+           importedPlayers.at(bestYoungPlayersIter->second).lastName.c_str());
     bestYoungPlayersIter++;
   }
 
@@ -866,33 +1073,38 @@ bool MainMenuPage::GoImportDB() {
   bestYoungPlayersIter = bestYoungPlayersMap.end();
   bestYoungPlayersIter--;
   for (int i = 0; i < 70; i++) {
-    printf("%f (current: %f, age %i): %s\n", bestYoungPlayersIter->first, importedPlayers.at(bestYoungPlayersIter->second).averageStat, importedPlayers.at(bestYoungPlayersIter->second).age, importedPlayers.at(bestYoungPlayersIter->second).lastName.c_str());
+    printf("%f (current: %f, age %i): %s\n", bestYoungPlayersIter->first,
+           importedPlayers.at(bestYoungPlayersIter->second).averageStat,
+           importedPlayers.at(bestYoungPlayersIter->second).age,
+           importedPlayers.at(bestYoungPlayersIter->second).lastName.c_str());
     bestYoungPlayersIter--;
   }
 
-
-  // calculate order of players per club - to get players on their right positions, and the best players in the base eleven
+  // calculate order of players per club - to get players on their right positions, and the best
+  // players in the base eleven
 
   query = "begin transaction;";
   for (unsigned int c = 0; c < clubs.size(); c++) {
-
     // first, put the best keeper on top, and other keepers away
     std::vector<PlayerImport> keepers;
     for (unsigned int p = 0; p < clubs.at(c).players.size(); p++) {
-      if (clubs.at(c).players.at(p).position.compare("GK") == 0) keepers.push_back(clubs.at(c).players.at(p));
+      if (clubs.at(c).players.at(p).position == "GK")
+        keepers.push_back(clubs.at(c).players.at(p));
     }
-    //assert(keepers.size() > 0);
+    // assert(keepers.size() > 0);
     if (keepers.size() > 0) {
-      //printf("Team %s DOES have keeper.\n", clubs.at(c).name.c_str());
+      // printf("Team %s DOES have keeper.\n", clubs.at(c).name.c_str());
       std::sort(keepers.rbegin(), keepers.rend(), SortClubPlayersByAverageStat);
       clubs.at(c).players.insert(clubs.at(c).players.begin(), keepers.at(0));
 
       // delete other keepers for now
       std::vector<PlayerImport>::iterator iter = clubs.at(c).players.begin();
-      iter++; // skip keeper we just added
+      iter++;  // skip keeper we just added
       while (iter != clubs.at(c).players.end()) {
-        if ((*iter).position.compare("GK") == 0) {
-          if ((*iter).id != keepers.at(0).id) query += (std::string)("delete from players where players.id = " + int_to_str((*iter).id) + ";");
+        if ((*iter).position == "GK") {
+          if ((*iter).id != keepers.at(0).id)
+            query += (std::string)(
+                "delete from players where players.id = " + int_to_str((*iter).id) + ";");
           iter = clubs.at(c).players.erase(iter);
         } else {
           iter++;
@@ -900,199 +1112,82 @@ bool MainMenuPage::GoImportDB() {
       }
 
     } else {
-
-      //Log(e_Warning, "MainMenuPage", "GoImportDB", "Team " + clubs.at(c).name + " has no keeper!");
+      // Log(e_Warning, "MainMenuPage", "GoImportDB", "Team " + clubs.at(c).name + " has no
+      // keeper!");
     }
 
     // bestestest players on top
     std::vector<PlayerImport>::reverse_iterator rend = clubs.at(c).players.rend();
     std::vector<PlayerImport>::reverse_iterator rbegin = clubs.at(c).players.rbegin();
-    if (keepers.size() > 0) rend--; // keep keeper intact
-    //rbegin++;
+    if (keepers.size() > 0)
+      rend--;  // keep keeper intact
+    // rbegin++;
     std::sort(rbegin, rend, SortClubPlayersByAverageStat);
 
     // now sort first 11 by role (defenders in da back)
     std::vector<PlayerImport>::iterator iter = clubs.at(c).players.begin();
     std::vector<PlayerImport>::iterator iterEnd = clubs.at(c).players.begin();
-    if (keepers.size() > 0) advance(iter, 1); // keep keeper intact
-    advance(iterEnd, std::min(11, int(clubs.at(c).players.size())));
+    if (keepers.size() > 0)
+      std::advance(iter, 1);  // keep keeper intact
+    std::advance(iterEnd, std::min(11, int(clubs.at(c).players.size())));
     std::sort(iter, iterEnd, SortClubPlayersByRole);
 
-    //printf("KEEPER?: %s\n", clubs.at(c).players.begin()->lastName.c_str());
-
-/*
-    // add second keeper
-    if (keepers.size() > 1) {
-      iter = clubs.at(c).players.begin();
-      advance(iter, 11);
-      clubs.at(c).players.insert(iter, keepers.at(1));
-    } // (fuck the possible 3rd keeper and on hee hee)
-*/
+    // printf("KEEPER?: %s\n", clubs.at(c).players.begin()->lastName.c_str());
 
     // only keep the best
     unsigned int keepPlayers = 18;
-    if (clubs.at(c).players.size() < keepPlayers) keepPlayers = clubs.at(c).players.size();
+    if (clubs.at(c).players.size() < keepPlayers)
+      keepPlayers = clubs.at(c).players.size();
 
     // sort the remaining
     if (clubs.at(c).players.size() > 11) {
       iter = clubs.at(c).players.begin();
       iterEnd = clubs.at(c).players.begin();
-      advance(iter, 11);
-      advance(iterEnd, keepPlayers);
+      std::advance(iter, 11);
+      std::advance(iterEnd, keepPlayers);
       std::sort(iter, iterEnd, SortClubPlayersByRole);
     }
 
     for (unsigned int p = 0; p < keepPlayers; p++) {
-      //printf("%i: %s\n", p, clubs.at(c).players.at(p).lastName.c_str());
-      query += (std::string)("update players set formationorder = " + int_to_str(p) + " where players.id = " + int_to_str(clubs.at(c).players.at(p).id) + " and players.formationorder = -1;");
+      // printf("%i: %s\n", p, clubs.at(c).players.at(p).lastName.c_str());
+      query += (std::string)("update players set formationorder = " + int_to_str(p) +
+                             " where players.id = " + int_to_str(clubs.at(c).players.at(p).id) +
+                             " and players.formationorder = -1;");
 
       // if not exist, add to namesdb code
       std::string firstname = clubs.at(c).players.at(p).firstName;
       std::string lastname = clubs.at(c).players.at(p).lastName;
-      //std::string namequery = "insert into playernames (firstname, lastname, fakefirstname, fakelastname, formationorder) values (\"" + firstname + "\", \"" + lastname + "\", \"" + firstname + "\", \"" + lastname + "\", " + int_to_str(p) + ");";
-      std::string namequery = "insert into playernames (firstname, lastname, fakefirstname, fakelastname, formationorder) select \"" + firstname + "\", \"" + lastname + "\", \"" + firstname + "\", \"" + lastname + "\", " + int_to_str(p) + " WHERE NOT EXISTS(SELECT 1 FROM playernames WHERE (firstname = \"" + firstname + "\" AND lastname = \"" + lastname + "\") OR (fakefirstname = \"" + firstname + "\" AND fakelastname = \"" + lastname + "\"));";
+      // std::string namequery = "insert into playernames (firstname, lastname, fakefirstname,
+      // fakelastname, formationorder) values (\"" + firstname + "\", \"" + lastname + "\", \"" +
+      // firstname + "\", \"" + lastname + "\", " + int_to_str(p) + ");";
+      std::string namequery =
+          "insert into playernames (firstname, lastname, fakefirstname, fakelastname, "
+          "formationorder) select " +
+          SqlString(firstname) + ", " + SqlString(lastname) + ", " + SqlString(firstname) + ", " +
+          SqlString(lastname) + ", " + int_to_str(p) +
+          " WHERE NOT EXISTS(SELECT 1 FROM playernames WHERE (firstname = " + SqlString(firstname) +
+          " AND lastname = " + SqlString(lastname) +
+          ") OR (fakefirstname = " + SqlString(firstname) +
+          " AND fakelastname = " + SqlString(lastname) + "));";
       printf("%s\n", namequery.c_str());
-      DatabaseResult *nameresult = namedb->Query(namequery);
-      delete nameresult;
+      auto nameresult = namedb->Query(namequery);
     }
 
     // delete the rest
     for (unsigned int p = keepPlayers; p < clubs.at(c).players.size(); p++) {
-      query += (std::string)("delete from players where players.id = " + int_to_str(clubs.at(c).players.at(p).id) + ";");
+      query += (std::string)("delete from players where players.id = " +
+                             int_to_str(clubs.at(c).players.at(p).id) + ";");
     }
-
   }
   query += "commit;";
   result = GetDB()->Query(query);
-  delete result;
 
   delete namedb;
 
   return true;
 }
 
-/*XX deprecated
-void MainMenuPage::Import_AgeValueStatsAdd(int age, int value) {
-  std::map < int, std::vector<int> >::iterator iter = ageValues.find(age);
-  if (iter == ageValues.end()) {
-    std::vector<int> valueVec;
-    valueVec.push_back(value);
-    ageValues.insert(std::pair<int, std::vector<int> >(age, valueVec));
-  } else {
-    iter->second.push_back(value);
-  }
-}
-
-void MainMenuPage::Import_ProcessAgeValueStats() {
-
-  bool cachedVersion = false;
-
-  if (cachedVersion) {
-
-    averageStatPerAge.insert(std::pair<int, float>(15, 0.452861));
-    averageStatPerAge.insert(std::pair<int, float>(16, 0.456137));
-    averageStatPerAge.insert(std::pair<int, float>(17, 0.463531));
-    averageStatPerAge.insert(std::pair<int, float>(18, 0.476644));
-    averageStatPerAge.insert(std::pair<int, float>(19, 0.495670));
-    averageStatPerAge.insert(std::pair<int, float>(20, 0.521165));
-    averageStatPerAge.insert(std::pair<int, float>(21, 0.549251));
-    averageStatPerAge.insert(std::pair<int, float>(22, 0.581290));
-    averageStatPerAge.insert(std::pair<int, float>(23, 0.609627));
-    averageStatPerAge.insert(std::pair<int, float>(24, 0.640026));
-    averageStatPerAge.insert(std::pair<int, float>(25, 0.661062));
-    averageStatPerAge.insert(std::pair<int, float>(26, 0.681876));
-    averageStatPerAge.insert(std::pair<int, float>(27, 0.695848));
-    averageStatPerAge.insert(std::pair<int, float>(28, 0.707468));
-    averageStatPerAge.insert(std::pair<int, float>(29, 0.716388));
-    averageStatPerAge.insert(std::pair<int, float>(30, 0.722636));
-    averageStatPerAge.insert(std::pair<int, float>(31, 0.725265));
-    averageStatPerAge.insert(std::pair<int, float>(32, 0.718620));
-    averageStatPerAge.insert(std::pair<int, float>(33, 0.706918));
-    averageStatPerAge.insert(std::pair<int, float>(34, 0.701204));
-    averageStatPerAge.insert(std::pair<int, float>(35, 0.698097));
-    averageStatPerAge.insert(std::pair<int, float>(36, 0.695981));
-    averageStatPerAge.insert(std::pair<int, float>(37, 0.694231));
-    averageStatPerAge.insert(std::pair<int, float>(38, 0.693000));
-    averageStatPerAge.insert(std::pair<int, float>(39, 0.690599));
-    averageStatPerAge.insert(std::pair<int, float>(40, 0.683223));
-
-  } else {
-
-    std::map<int, float> tempAverageStatPerAge; // needs to be smoothed later on into the non-temp version
-    int lowestOverallValue = 10000000;
-    int highestOverallValue = 0;
-    for (int age = 15; age <= 40; age++) {
-      std::map < int, std::vector<int> >::iterator iter = ageValues.find(age);
-      if (iter != ageValues.end()) {
-        int totalValues = 0;
-        int cumulativeValue = 0;
-        int lowestValue = 10000000;
-        int highestValue = 0;
-        std::vector<int> &values = iter->second;
-        for (unsigned int i = 0; i < values.size(); i++) {
-          cumulativeValue += values.at(i);
-          totalValues++;
-          if (values.at(i) < lowestValue) lowestValue = values.at(i);
-          if (values.at(i) > highestValue) highestValue = values.at(i);
-          if (values.at(i) < lowestOverallValue) lowestOverallValue = values.at(i);
-          if (values.at(i) > highestOverallValue) highestOverallValue = values.at(i);
-        }
-        int average = int(round((float)cumulativeValue / (float)totalValues));
-        std::sort(values.begin(), values.end());
-        int median = values.at(clamp(values.size() / 2, 0, values.size() - 1));
-        printf("age: %i, players: %i, average value: %i, median value: %i, lowest/highest: %i/%i\n", age, totalValues, average, median, lowestValue, highestValue);
-
-        // save
-        //float averageStat = GetAverageStatFromValue(age, average);
-        float averageStat = GetAverageStatFromValue(age, median * 0.9 + average * 0.1);
-        tempAverageStatPerAge.insert(std::pair<int, float>(age, averageStat));
-      }
-    }
-
-    // average stats per age over multiple ages to smooth out the graph and to fix ages where few players are available (>~40 year old)
-    averageStatPerAge = tempAverageStatPerAge;
-    std::map<int, float>::iterator tmpIter = tempAverageStatPerAge.begin();
-    std::map<int, float>::iterator iter = averageStatPerAge.begin();
-    while (tmpIter != tempAverageStatPerAge.end()) {
-      int amount = 1; // divide by how many? (for average)
-      float average = tmpIter->second;
-      if (tmpIter != tempAverageStatPerAge.begin()) { // add previous
-        tmpIter--;
-        average += tmpIter->second;
-        amount++;
-        tmpIter++;
-      }
-      if (boost::next(tmpIter) != tempAverageStatPerAge.end()) { // add next
-        tmpIter++;
-        average += tmpIter->second;
-        amount++;
-        tmpIter--;
-      }
-
-      iter->second = average / (float)amount;
-      //printf("new: %f\n", iter->second);
-
-      tmpIter++;
-      iter++;
-    }
-
-    printf("overall lowest/highest value: %i/%i\n", lowestOverallValue, highestOverallValue);
-    // right now: overall lowest/highest value: 10/45643480
-
-
-    iter = averageStatPerAge.begin();
-    while (iter != averageStatPerAge.end()) {
-      //printf("average stat at age %i: %f\n", iter->first, iter->second);
-      printf("averageStatPerAge.insert(std::pair<int, float>(%i, %f));\n", iter->first, iter->second);
-      iter++;
-    }
-
-  } // uncached version
-
-}
-*/
-
 // inhibit 'back' button from closing the game
-void MainMenuPage::ProcessWindowingEvent(WindowingEvent *event) {
+void MainMenuPage::ProcessWindowingEvent(WindowingEvent* event) {
   event->Ignore();
 }

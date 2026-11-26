@@ -1,42 +1,44 @@
-// written by bastiaan konings schuiling 2008 - 2015
-// this work is public domain. the code is undocumented, scruffy, untested, and should generally not be used for anything important.
-// i do not offer support, so don't ask. to be used for inspiration :)
-
 #include "menutask.hpp"
 
+#include <algorithm>
+
+#include "../main.hpp"
 #include "../onthepitch/match.hpp"
-
-#include "pagefactory.hpp"
-
-#include "mainmenu.hpp"
-#include "ingame/ingame.hpp"
-#include "visualoptions.hpp"
-#include "ingame/replaymenu.hpp"
-#include "ingame/phasemenu.hpp"
-#include "ingame/gameover.hpp"
-
-#include "gametask.hpp"
-
-#include "main.hpp"
-
+#include "career/career_database.hpp"
+#include "career/career_navigation.hpp"
+#include "data/careerdata.hpp"
 #include "framework/scheduler.hpp"
+#include "gametask.hpp"
+#include "hid/controllersetup.hpp"
+#include "ingame/gameover.hpp"
+#include "ingame/ingame.hpp"
+#include "ingame/phasemenu.hpp"
+#include "ingame/replaymenu.hpp"
+#include "main.hpp"
+#include "mainmenu.hpp"
 #include "managers/resourcemanagerpool.hpp"
+#include "pagefactory.hpp"
+#include "visualoptions.hpp"
 
 using namespace blunted;
 
 void SetActiveController(int side, bool keyboard) {
   bool keyboardActive = true;
   const std::vector<SideSelection> sides = GetMenuTask()->GetControllerSetup();
+  const std::vector<IHIDevice*>& controllers = GetControllers();
   int menuControllerID = -1;
   for (unsigned int i = 0; i < sides.size(); i++) {
     if (sides.at(i).side == side) {
-      if (GetControllers().at(sides.at(i).controllerID)->GetDeviceType() == e_HIDeviceType_Gamepad) {
-        menuControllerID = static_cast<HIDGamepad*>(GetControllers().at(sides.at(i).controllerID))->GetGamepadID();
+      int controllerID = sides.at(i).controllerID;
+      if (controllerID >= 0 && controllerID < static_cast<int>(controllers.size()) &&
+          controllers.at(controllerID)->GetDeviceType() == e_HIDeviceType_Gamepad) {
+        menuControllerID = static_cast<HIDGamepad*>(controllers.at(controllerID))->GetGamepadID();
         keyboardActive = false;
       }
       break;
     }
-    if (i == sides.size() - 1) menuControllerID = 0; // AI opponent, so allow choosing their team with controller
+    if (i == sides.size() - 1)
+      menuControllerID = 0;  // AI opponent, so allow choosing their team with controller
   }
 
   GetMenuTask()->SetActiveJoystickID(menuControllerID);
@@ -51,9 +53,21 @@ void SetActiveController(int side, bool keyboard) {
   }
 }
 
-MenuTask::MenuTask(float aspectRatio, float margin, TTF_Font *defaultFont, TTF_Font *defaultOutlineFont) : Gui2Task(GetScene2D(), aspectRatio, margin) {
+MenuTask::MenuTask(float aspectRatio, float margin, TTF_Font* defaultFont,
+                   TTF_Font* defaultOutlineFont)
+    : Gui2Task(GetScene2D(), aspectRatio, margin), menuBackground(nullptr) {
+  Gui2Style* style = windowManager->GetStyle();
 
-  Gui2Style *style = windowManager->GetStyle();
+  windowManager->onSoundClick = [this]() {
+    if (GetGameTask() && GetGameTask()->GetMenuScene()) {
+      GetGameTask()->GetMenuScene()->PlayClickSound();
+    }
+  };
+  windowManager->onSoundHover = [this]() {
+    if (GetGameTask() && GetGameTask()->GetMenuScene()) {
+      GetGameTask()->GetMenuScene()->PlayHoverSound();
+    }
+  };
 
   style->SetFont(e_TextType_Default, defaultFont);
   style->SetFont(e_TextType_DefaultOutline, defaultOutlineFont);
@@ -61,40 +75,35 @@ MenuTask::MenuTask(float aspectRatio, float margin, TTF_Font *defaultFont, TTF_F
   style->SetFont(e_TextType_Title, defaultFont);
   style->SetFont(e_TextType_ToolTip, defaultFont);
 
-/* previous colorset
-  style->SetColor(e_DecorationType_Dark1, Vector3(0, 0, 0));
-  style->SetColor(e_DecorationType_Dark2, Vector3(63, 63, 63));
-  style->SetColor(e_DecorationType_Bright1, Vector3(240, 255, 210));
-  style->SetColor(e_DecorationType_Bright2, Vector3(214, 194, 154));
-  style->SetColor(e_DecorationType_Toggled, Vector3(255, 20, 70));
-*/
-
-  // huisstijl:
-  // blauw: 0, 100, 220
-  // orange: 240, 100, 0
-  style->SetColor(e_DecorationType_Dark1, Vector3(20, 35, 55));
-  style->SetColor(e_DecorationType_Dark2, Vector3(60, 35, 20));
-  style->SetColor(e_DecorationType_Bright1, Vector3(150, 180, 220));
-  style->SetColor(e_DecorationType_Bright2, Vector3(240, 150, 100));
-  style->SetColor(e_DecorationType_Toggled, Vector3(240, 60, 60));
+  // Classic PES 5/6 Theme: Deep Navy, Silver, and Broadcast Gold
+  style->SetColor(e_DecorationType_Dark1, Vector3(12, 22, 45));  // Deep navy blue (backgrounds)
+  style->SetColor(e_DecorationType_Dark2,
+                  Vector3(45, 55, 80));  // Cool silver-blue (borders/inactive)
+  style->SetColor(e_DecorationType_Bright1, Vector3(255, 255, 255));  // Pure crisp white (text)
+  style->SetColor(e_DecorationType_Bright2,
+                  Vector3(255, 215, 0));  // Classic PES broadcast gold (hover/focus)
+  style->SetColor(e_DecorationType_Toggled, Vector3(210, 40, 40));  // PES Red (active/toggled)
 
   windowManager->SetTimeStep_ms(10);
 
-  Gui2Root *root = windowManager->GetRoot();
+  Gui2Root* root = windowManager->GetRoot();
   root->Show();
 
-  PageFactory *pageFactory = new PageFactory();
+  menuBackground = new Gui2Image(windowManager, "image_menu_background", 0, 0, 100, 100);
+  menuBackground->LoadImage("media/menu/backgrounds/stadium01.png");
+  root->AddView(menuBackground);
+  menuBackground->Show();
+
+  PageFactory* pageFactory = new PageFactory();
   windowManager->SetPageFactory(pageFactory);
 
   if (!QuickStart()) {
-
     queuedFixture->team1KitNum = 1;
     queuedFixture->team2KitNum = 2;
 
     menuAction = e_MenuAction_Menu;
 
   } else {
-
     int size = GetControllers().size();
     for (int i = 0; i < size; i++) {
       SideSelection side;
@@ -121,32 +130,58 @@ MenuTask::MenuTask(float aspectRatio, float margin, TTF_Font *defaultFont, TTF_F
     queuedFixture->team2KitNum = 2;
 
     menuAction = e_MenuAction_Menu;
-
   }
-
 }
 
 MenuTask::~MenuTask() {
-  if (Verbose()) printf("exiting menutask.. ");
+  if (Verbose())
+    printf("exiting menutask.. ");
 
   delete windowManager->GetPageFactory();
 
-  if (Verbose()) printf("done\n");
+  if (Verbose())
+    printf("done\n");
+}
+
+void MenuTask::HandleRemovedControllers() {
+  const std::vector<int> removed = TakeRemovedControllerIndices();
+  if (removed.empty())
+    return;
+  std::vector<SideSelection> sides = GetControllerSetup();
+  for (int index : removed) {
+    const int side = controllersetup::RemoveControllerFromSetup(sides, index);
+    if (side != 0 && GetGameTask()->GetMatch())
+      disconnectedSide = side;
+  }
+  SetControllerSetup(sides);
+  controllerSetupChanged = true;
 }
 
 void MenuTask::ProcessPhase() {
-
+  if (quitAt_ms != 0 && EnvironmentManager::GetInstance().GetTime_ms() >= quitAt_ms) {
+    quitAt_ms = 0;
+    QuitGame();
+  }
+  HandleRemovedControllers();
   Gui2Task::ProcessPhase();
 
   if (menuAction == e_MenuAction_Menu) {
-
     windowManager->GetPagePath()->Clear();
 
     GetGameTask()->Action(e_GameTaskMessage_StopMatch);
-    GetGameTask()->Action(e_GameTaskMessage_StartMenuScene);
+    GetGameTask()->Action(e_GameTaskMessage_StopMenuScene);
 
+    menuBackground->Show();
     Properties properties;
-    if (!QuickStart()) {
+    if (GetConfiguration()->GetBool("league_resume_hub", false)) {
+      GetConfiguration()->SetBool("league_resume_hub", false);
+      windowManager->GetPageFactory()->CreatePage((int)e_PageID_League_Matchday, properties, 0);
+    } else if (GetConfiguration()->GetBool("career_resume_hub", false)) {
+      GetConfiguration()->SetBool("career_resume_hub", false);
+      CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+      const int hubPage = CareerHubPageID(save);
+      windowManager->GetPageFactory()->CreatePage(hubPage, properties, 0);
+    } else if (!QuickStart()) {
       if (!IsReleaseVersion()) {
         windowManager->GetPageFactory()->CreatePage((int)e_PageID_MainMenu, properties, 0);
       } else {
@@ -157,21 +192,28 @@ void MenuTask::ProcessPhase() {
     }
 
   } else if (menuAction == e_MenuAction_Game) {
-
+    menuBackground->Hide();
     GetGameTask()->Action(e_GameTaskMessage_StopMenuScene);
     GetGameTask()->Action(e_GameTaskMessage_StartMatch);
-
   }
 
   menuAction = e_MenuAction_None;
 }
 
 bool MenuTask::QuickStart() {
-  return !IsReleaseVersion() && EnvironmentManager::GetInstance().GetTime_ms() < 10000; // after 5 seconds, quickstart disabled (== after > 0 matches have been played)
+  // Keep the normal main-menu flow available in debug builds unless quick-start is explicitly
+  // enabled in the config for local iteration.
+  return !IsReleaseVersion() && GetConfiguration()->GetBool("quick_start", false) &&
+         EnvironmentManager::GetInstance().GetTime_ms() <
+             10000;  // after 10 seconds, quickstart disabled
 }
 
 void MenuTask::QuitGame() {
   EnvironmentManager::GetInstance().SignalQuit();
+}
+
+void MenuTask::QuitGameAfter(unsigned long delay_ms) {
+  quitAt_ms = EnvironmentManager::GetInstance().GetTime_ms() + std::max(1UL, delay_ms);
 }
 
 void MenuTask::ReleaseAllButtons() {

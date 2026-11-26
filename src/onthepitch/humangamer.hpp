@@ -1,16 +1,10 @@
-// written by bastiaan konings schuiling 2008 - 2015
-// this work is public domain. the code is undocumented, scruffy, untested, and should generally not be used for anything important.
-// i do not offer support, so don't ask. to be used for inspiration :)
-
 #ifndef _HPP_HUMANGAMER
 #define _HPP_HUMANGAMER
 
-#include "defines.hpp"
-
-#include "scene/scene3d/scene3d.hpp"
-
-#include "player/controller/humancontroller.hpp"
 #include "../hid/ihidevice.hpp"
+#include "defines.hpp"
+#include "player/controller/humancontroller.hpp"
+#include "scene/scene3d/scene3d.hpp"
 
 using namespace blunted;
 
@@ -26,30 +20,33 @@ enum e_PlayerColor {
 };
 
 class HumanGamer {
+public:
+  HumanGamer(Team* team, IHIDevice* hid, e_PlayerColor color);
+  virtual ~HumanGamer();
 
-  public:
-    HumanGamer(Team *team, IHIDevice *hid, e_PlayerColor color);
-    virtual ~HumanGamer();
+  int GetSelectedPlayerID() const;
+  Player* GetSelectedPlayer() const { return selectedPlayer; }
+  void SetSelectedPlayerID(int id);
+  // Keeps this gamer on one player (a Player-mode career's footballer): while
+  // that player is on the pitch, every selection resolves to them. -1 unlocks.
+  void SetLockedPlayerID(int id) { lockedPlayerID = id; }
+  int GetLockedPlayerID() const { return lockedPlayerID; }
+  IHIDevice* GetHIDevice() { return hid; }
+  HumanController* GetHumanController() { return controller; }
 
-    int GetSelectedPlayerID() const;
-    Player *GetSelectedPlayer() const { return selectedPlayer; }
-    void SetSelectedPlayerID(int id);
-    IHIDevice *GetHIDevice() { return hid; }
-    HumanController *GetHumanController() { return controller; }
+  e_PlayerColor GetPlayerColor() const { return playerColor; }
 
-    e_PlayerColor GetPlayerColor() const { return playerColor; }
+  void PreparePutBuffers();
+  void Put();
 
-    void PreparePutBuffers();
-    void Put();
+protected:
+  Team* team;
+  IHIDevice* hid;
+  HumanController* controller;
 
-  protected:
-    Team *team;
-    IHIDevice *hid;
-    HumanController *controller;
-
-    e_PlayerColor playerColor;
-    Player *selectedPlayer;
-
+  e_PlayerColor playerColor;
+  Player* selectedPlayer;
+  int lockedPlayerID = -1;
 };
 
 #endif

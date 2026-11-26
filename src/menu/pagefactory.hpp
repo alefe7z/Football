@@ -1,7 +1,3 @@
-// written by bastiaan konings schuiling 2008 - 2015
-// this work is public domain. the code is undocumented, scruffy, untested, and should generally not be used for anything important.
-// i do not offer support, so don't ask. to be used for inspiration :)
-
 #ifndef _HPP_PAGEFACTORY
 #define _HPP_PAGEFACTORY
 
@@ -38,6 +34,7 @@ enum e_PageID {
   e_PageID_GamepadFunction,
   e_PageID_Graphics,
   e_PageID_Audio,
+  e_PageID_Language,
 
   e_PageID_League_Start,
   e_PageID_League_Start_Load,
@@ -54,36 +51,54 @@ enum e_PageID {
   e_PageID_League_Team_Setup,
   e_PageID_League_Calendar,
   e_PageID_League_Standings,
-  e_PageID_League_Standings_League,
   e_PageID_League_Standings_League_Table,
   e_PageID_League_Standings_League_Stats,
-  e_PageID_League_Standings_NCup,
-  e_PageID_League_Standings_NCup_Tree,
-  e_PageID_League_Standings_NCup_Stats,
-  e_PageID_League_Standings_ICup1,
-  e_PageID_League_Standings_ICup1_GroupTable,
-  e_PageID_League_Standings_ICup1_Tree,
-  e_PageID_League_Standings_ICup1_Stats,
-  e_PageID_League_Standings_ICup2,
-  e_PageID_League_Standings_ICup2_GroupTable,
-  e_PageID_League_Standings_ICup2_Tree,
-  e_PageID_League_Standings_ICup2_Stats,
   e_PageID_League_Management,
   e_PageID_League_Management_Contracts,
   e_PageID_League_Management_Transfers,
   e_PageID_League_System,
   e_PageID_League_System_Save,
-  e_PageID_League_System_Settings
+  e_PageID_League_System_Settings,
+  e_PageID_League_PreMatch,
+  e_PageID_League_Matchday,
+
+  e_PageID_MatchHistory,
+  e_PageID_SetPieceEditor,
+
+  e_PageID_CareerMenu,
+  e_PageID_CareerNewGame,
+  e_PageID_CareerHub,
+  e_PageID_CareerTransferMarket,
+  e_PageID_CareerTransferBids,
+  e_PageID_CareerTransferBidDetail,
+  e_PageID_CareerPressConference,  // 6.13
+  e_PageID_CareerLeagueExpansion,  // 6.16
+  e_PageID_CareerCustomLeague,     // 6.17
+  e_PageID_CareerFreeAgency,
+  e_PageID_CareerTraining,
+  e_PageID_CareerStrategy,
+  e_PageID_CareerYouthAcademy,
+  e_PageID_CareerSquadRoster,
+  e_PageID_CareerSeason,
+  e_PageID_CareerMatchday,
+  e_PageID_CareerSave,
+  e_PageID_CareerStandings,
+
+  e_PageID_OwnerHub,
+  e_PageID_OwnerStadium,
+  e_PageID_OwnerFinances,
+  e_PageID_OwnerStaff,
+  e_PageID_OwnerStaffHire,
+  e_PageID_OwnerSponsors,
+  e_PageID_OwnerBoardRoom
 };
 
 class PageFactory : public Gui2PageFactory {
+public:
+  using Gui2PageFactory::CreatePage;
+  virtual Gui2Page* CreatePage(const Gui2PageData& pageData);
 
-  public:
-    using Gui2PageFactory::CreatePage;
-    virtual Gui2Page *CreatePage(const Gui2PageData &pageData);
-
-  protected:
-
+protected:
 };
 
 #endif
