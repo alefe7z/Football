@@ -17,6 +17,7 @@
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../AIsupport/mentalimage.hpp"
 #include "../../aitactics.hpp"
+#include "../../goalkeeperdive.hpp"
 #include "../../playercontrolsettings.hpp"
 #include "../humanoid/humanoid_utils.hpp"
 #include "../playerofficial.hpp"
@@ -126,6 +127,28 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
                                     10.0f;
     commandQueue.push_back(command);
 
+    return;
+  }
+
+  // penalty: the goalkeeper has committed to a side as the taker strikes and
+  // starts his dive (see Referee::PlanPenaltyKeeperDive)
+
+  else if (match->IsInSetPiece() && CastPlayer()->HasDivePlan() &&
+           team->GetController()->GetPieceTaker() != player) {
+    PlayerCommand dive;
+    dive.desiredFunctionType = e_FunctionType_Deflect;
+    dive.useDesiredMovement = false;
+    dive.useDesiredLookAt = false;
+    commandQueue.push_back(dive);
+
+    PlayerCommand wait;  // no dive animation fits (yet): stay set
+    wait.desiredFunctionType = e_FunctionType_Movement;
+    wait.useDesiredMovement = true;
+    wait.desiredDirection = player->GetDirectionVec();
+    wait.desiredVelocityFloat = idleVelocity;
+    wait.useDesiredLookAt = true;
+    wait.desiredLookAt = match->GetBall()->Predict(0).Get2D();
+    commandQueue.push_back(wait);
     return;
   }
 
@@ -325,6 +348,16 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
     static_cast<GoalieDefaultStrategy*>(goalieStrategy)
         ->CalculateIfBallIsBoundForGoal(keeperMentalImage);
     bool boundForGoal = static_cast<GoalieDefaultStrategy*>(goalieStrategy)->IsBallBoundForGoal();
+
+    // An opponent's shot on target that is out of reach on foot: commit to a
+    // full-stretch dive towards it instead of standing and watching it in.
+    if (boundForGoal && !CastPlayer()->HasDivePlan() &&
+        CastPlayer()->GetCurrentFunctionType() != e_FunctionType_Deflect)
+      PlanOpenPlayDive();
+    const bool diving = CastPlayer()->HasDivePlan();
+    if (diving)
+      boundForGoal = true;
+
     if (boundForGoal)
       manualMovement = true;
     if (CastPlayer() != match->GetDesignatedPossessionPlayer())
@@ -334,7 +367,7 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
 
     // if (boundForGoal && hasUniquePossession) printf("has unique possession, so no deflect anims
     // (poss: %f)\n", possessionAmount);
-    if (!hasUniquePossession || possessionAmount < 3.4f) {
+    if (!hasUniquePossession || possessionAmount < 3.4f || diving) {
       bool onlyPickupAnims = false;
       if (!boundForGoal && possessionAmount > 1.3f)
         onlyPickupAnims = true;
@@ -1359,4 +1392,35 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
     command.desiredLookAt = desiredLookAt;
     commandQueue.push_back(command);
   }
+}
+
+void ElizaController::PlanOpenPlayDive() {
+  Team* opponents = match->GetTeam(abs(team->GetID() - 1));
+  // only straight after an opponent strikes the ball
+  if (match->GetLastTouchTeamID() != opponents->GetID() ||
+      opponents->GetLastTouchTime_ms() + 400 < match->GetActualTime_ms())
+    return;
+  if (match->GetBall()->GetMovement().GetLength() < 12.0f)
+    return;
+
+  const int side = team->GetSide();
+  const auto crossing = GoalkeeperDive::FindGoalLineCrossing(
+      [this](int t_ms) { return match->GetBall()->Predict(t_ms); }, pitchHalfW * side, side, 1000);
+  if (!crossing.found || fabs(crossing.y) > goalHalfWidth + 0.3f || crossing.z > goalHeight + 0.3f)
+    return;
+
+  const Vector3 keeperPos = CastPlayer()->GetPosition();
+  if (!GoalkeeperDive::ShouldCommitDive(crossing.y - keeperPos.coords[1], crossing.time_ms))
+    return;
+
+  const Vector3 target(
+      keeperPos.coords[0], GoalkeeperDive::ClampToReach(crossing.y, keeperPos.coords[1]),
+      clamp(crossing.z, GoalkeeperDive::kMinDiveHeight, GoalkeeperDive::kMaxDiveHeight));
+  const unsigned long now = match->GetActualTime_ms();
+  CastPlayer()->SetDivePlan(match->GetBall()->Predict(0), target, now + crossing.time_ms,
+                            now + crossing.time_ms + 500);
+  if (GetConfiguration()->GetBool("debug", false))
+    printf("[keeper] %s stretches for a shot (%.1f m wide of him, %d ms to the line)\n",
+           CastPlayer()->GetPlayerData()->GetLastName().c_str(), crossing.y - keeperPos.coords[1],
+           crossing.time_ms);
 }

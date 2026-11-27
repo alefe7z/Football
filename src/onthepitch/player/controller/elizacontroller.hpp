@@ -47,6 +47,7 @@ public:
   virtual void Reset();
 
 protected:
+  void PlanOpenPlayDive();
   void GetOnTheBallCommands(std::vector<PlayerCommand>& commandQueue, Vector3& rawInputDirection,
                             float& rawInputVelocity);
 

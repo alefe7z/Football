@@ -59,4 +59,5 @@ quebrar a outra sem perceber.
 
 | Data | Tarefa | IA | Branch | Relatório |
 | --- | --- | --- | --- | --- |
+| 2026-11-27 | Goleiro que mergulha: escolhe o lado no pênalti, defende de verdade, se estica no jogo normal | Claude | `claude/tender-pasteur-85r9js` | [relatório](relatorios/2026-11-27-claude-goleiro.md) |
 | 2026-11-27 | Disputa de pênaltis 3D, opção de mata-mata no Quick Match, estatísticas de escanteios, impedimentos e cartões | Claude | `claude/tender-pasteur-85r9js` | [relatório](relatorios/2026-11-27-claude-penaltis-e-estatisticas.md) |

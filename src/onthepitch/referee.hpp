@@ -80,6 +80,14 @@ protected:
   void PreservePendingCaution();
   void IssuePendingCautions();
 
+  // The goalkeeper commits to a dive. With strikeIn_ms > 0 the ball has not
+  // been struck yet and he reads the taker's intended direction.
+  void PlanPenaltyKeeperDive(int kickingTeamID, int strikeIn_ms);
+  void AnticipatePenalty();
+  void RefinePenaltyKeeperDive(int kickingTeamID);
+  bool penaltyDivePlanned = false;
+  bool penaltyDiveRead = false;
+  Vector3 penaltyDiveTarget;
   void StartShootout();
   void ProcessShootout();
   void ScheduleShootoutKick();

@@ -65,6 +65,9 @@ public:
     shootoutGoals[1] = goals1;
   }
   bool HasShootout() const { return shootoutPlayed; }
+  // Shootout kicks the team's goalkeeper saved.
+  void AddPenaltySave(int teamID) { penaltySaves[teamID]++; }
+  int GetPenaltySaves(int teamID) const { return penaltySaves[teamID]; }
   int GetShootoutGoals(int teamID) const { return shootoutGoals[teamID]; }
   // Winner of the match including the shootout: 0, 1, or -1 for a draw.
   int GetWinnerTeamID() const {
@@ -111,6 +114,7 @@ protected:
 
   bool shootoutPlayed = false;
   int shootoutGoals[2] = {0, 0};
+  int penaltySaves[2] = {0, 0};
 
   std::array<std::vector<int>, 2> goalScorers;
   std::array<std::vector<std::string>, 2> goalMinutes;

@@ -842,7 +842,10 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
   auto iter = players.begin();
   while (iter != players.end()) {
     if ((*iter)->GetFormationEntry().role == e_PlayerRole_GK) {
-      (*iter)->ResetPosition(Vector3(pitchHalfW * team->GetSide() * 0.98, 0, 0),
+      // Penalties: the keeper stands on his goal line (IFAB Law 14).
+      const bool facingPenalty = setPiece == e_SetPiece_Penalty && takerTeamID != team->GetID();
+      const float keeperX = facingPenalty ? pitchHalfW - 0.25f : pitchHalfW * 0.98f;
+      (*iter)->ResetPosition(Vector3(keeperX * team->GetSide(), 0, 0),
                              match->GetBall()->Predict(0).Get2D());
       iter = players.erase(iter);
     } else {

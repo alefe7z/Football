@@ -5,6 +5,7 @@
 #include "../menu/career/career_database.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "gameplaytuning.hpp"
+#include "goalkeeperdive.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "match.hpp"
 #include "officials.hpp"
@@ -301,9 +302,16 @@ void Referee::Process() {
   IssuePendingCautions();
 
   if (match->IsInSetPiece()) {
+    AnticipatePenalty();
     // check if set piece has been taken
     if (buffer.taker->TouchAnim() && !buffer.taker->TouchPending()) {
       buffer.active = false;
+      if (buffer.desiredSetPiece == e_SetPiece_Penalty) {
+        if (!penaltyDivePlanned)
+          PlanPenaltyKeeperDive(buffer.teamID, 0);
+        else
+          RefinePenaltyKeeperDive(buffer.teamID);
+      }
       match->StopSetPiece();
       match->GetTeam(0)->GetController()->PrepareSetPiece(e_SetPiece_None);
       match->GetTeam(1)->GetController()->PrepareSetPiece(e_SetPiece_None);
@@ -325,6 +333,7 @@ void Referee::PrepareSetPiece(e_SetPiece setPiece) {
   // position players for set piece situation
 
   offsidePlayers.clear();
+  penaltyDivePlanned = false;
   match->ResetSituation(buffer.restartPos);
 
   match->GetTeam(0)->GetController()->PrepareSetPiece(setPiece, buffer.teamID);
@@ -684,8 +693,13 @@ void Referee::ResolveShootoutKick(bool scored) {
                             match->GetTeam(1)->GetTeamData()->GetName();
   const std::string kickerName =
       buffer.taker ? buffer.taker->GetPlayerData()->GetLastName() + " - " : std::string();
-  printf("[shootout] %s%s, %s\n", kickerName.c_str(), scored ? "scored" : "missed",
-         shootout.ScoreText().c_str());
+  // Saved when the goalkeeper touched it after the strike.
+  Player* keeper = match->GetTeam(1 - shootoutKickTeam)->GetGoalie();
+  const bool saved = !scored && keeper && keeper->GetLastTouchTime_ms() >= shootoutKickTime_ms;
+  if (saved)
+    match->GetMatchData()->AddPenaltySave(1 - shootoutKickTeam);
+  printf("[shootout] %s%s, %s\n", kickerName.c_str(),
+         scored ? "scored" : (saved ? "saved" : "missed"), shootout.ScoreText().c_str());
 
   if (shootout.IsDecided()) {
     const int winner = shootout.Winner();
@@ -700,7 +714,8 @@ void Referee::ResolveShootoutKick(bool scored) {
     shootoutNextEvent_ms = match->GetActualTime_ms() + 5000;
   } else {
     const std::string outcome =
-        scored ? loc.Translate("ingame_goal") + "!" : loc.Translate("ingame_penalty_missed");
+        scored ? loc.Translate("ingame_goal") + "!"
+               : loc.Translate(saved ? "ingame_penalty_saved" : "ingame_penalty_missed");
     match->SpamMessage(kickerName + outcome + "  (" + tally + ")", 2500);
     shootoutNextEvent_ms = match->GetActualTime_ms() + 2500;
   }
@@ -735,9 +750,15 @@ void Referee::ProcessShootout() {
         match->StartSetPiece();
       }
     }
+    if (match->IsInSetPiece())
+      AnticipatePenalty();
     if (match->IsInSetPiece() && buffer.taker && buffer.taker->TouchAnim() &&
         !buffer.taker->TouchPending()) {
       buffer.active = false;
+      if (!penaltyDivePlanned)
+        PlanPenaltyKeeperDive(buffer.teamID, 0);
+      else
+        RefinePenaltyKeeperDive(buffer.teamID);
       match->StopSetPiece();
       match->GetTeam(0)->GetController()->PrepareSetPiece(e_SetPiece_None);
       match->GetTeam(1)->GetController()->PrepareSetPiece(e_SetPiece_None);
@@ -759,4 +780,98 @@ void Referee::ProcessShootout() {
       match->GetBallRetainer() != nullptr && match->GetBallRetainer() != buffer.taker;
   if (outOfPlay || keeperHolds || ShootoutReboundTouched() || now > shootoutKickTime_ms + 3500)
     ResolveShootoutKick(false);
+}
+
+// ---------------------------------------------------------------------------
+// Penalty: the goalkeeper commits to a side as the ball is struck
+
+void Referee::AnticipatePenalty() {
+  if (buffer.desiredSetPiece != e_SetPiece_Penalty || penaltyDivePlanned || !buffer.taker)
+    return;
+  if (!buffer.taker->TouchAnim() || !buffer.taker->TouchPending())
+    return;
+  // Keepers move as the taker plants his foot, a moment before contact.
+  const int framesToStrike = buffer.taker->GetTouchFrame() - buffer.taker->GetCurrentFrame();
+  if (framesToStrike <= 15)
+    PlanPenaltyKeeperDive(buffer.teamID, framesToStrike * 10);
+}
+
+void Referee::PlanPenaltyKeeperDive(int kickingTeamID, int strikeIn_ms) {
+  penaltyDivePlanned = true;
+  Team* defending = match->GetTeam(1 - kickingTeamID);
+  Player* keeper = defending->GetGoalie();
+  if (!keeper)
+    return;
+
+  const int side = defending->GetSide();
+  const float lineX = pitchHalfW * side;
+  const Vector3 ballPos = match->GetBall()->Predict(0);
+  float shotY = 0.0f;
+  float shotZ = 0.5f;
+  int arrive_ms = strikeIn_ms + 450;
+  if (strikeIn_ms > 0) {
+    // Not struck yet: read where the taker means to put it.
+    const Vector3 aim =
+        buffer.taker->GetCurrentAnim()->originatingCommand.touchInfo.desiredDirection;
+    const float distance = fabs(lineX - ballPos.coords[0]);
+    if (fabs(aim.coords[0]) > 0.05f) {
+      const float along = distance / fabs(aim.coords[0]);
+      shotY = ballPos.coords[1] + aim.coords[1] * along;
+      // The run-up shows the side, not the height: expect a typical
+      // penalty height unless the aim says otherwise.
+      shotZ = clamp(0.85f + aim.coords[2] * along, 0.15f, 2.3f);
+    }
+    arrive_ms = strikeIn_ms + static_cast<int>(distance / 33.0f * 1000.0f);
+  } else {
+    const auto crossing = GoalkeeperDive::FindGoalLineCrossing(
+        [this](int t_ms) { return match->GetBall()->Predict(t_ms); }, lineX, side, 2000);
+    if (crossing.found) {
+      shotY = crossing.y;
+      shotZ = crossing.z;
+      arrive_ms = crossing.time_ms;
+    }
+  }
+
+  const float takerComposure = buffer.taker ? buffer.taker->GetStat("mental_calmness") : 0.5f;
+  const float readChance = GoalkeeperDive::PenaltyReadChance(
+      keeper->GetStat("physical_reaction"), keeper->GetStat("physical_agility"),
+      keeper->GetStat("mental_defensivepositioning"), takerComposure);
+  const GoalkeeperDive::DivePlan plan = GoalkeeperDive::PlanPenaltyDive(
+      shotY, shotZ, readChance, random(0, 1), random(0, 1), random(0, 1));
+
+  const Vector3 keeperPos = keeper->GetPosition();
+  penaltyDiveRead = plan.readShot;
+  penaltyDiveTarget = Vector3(keeperPos.coords[0],
+                              GoalkeeperDive::ClampToReach(plan.y, keeperPos.coords[1]), plan.z);
+  const Vector3& target = penaltyDiveTarget;
+  const unsigned long now = match->GetActualTime_ms();
+  keeper->SetDivePlan(ballPos, target, now + arrive_ms, now + arrive_ms + 700);
+  if (GetConfiguration()->GetBool("debug", false))
+    printf("[keeper] %s %s (aim y %.1f z %.1f, dive y %.1f z %.1f, %d ms to the line)\n",
+           keeper->GetPlayerData()->GetLastName().c_str(),
+           plan.readShot ? "read the taker" : (plan.stayedUp ? "stayed up" : "guessed"), shotY,
+           shotZ, target.coords[1], target.coords[2], arrive_ms);
+}
+
+// The ball has been struck. A keeper still waiting to go sees when it was hit,
+// and one who read the taker now sees exactly where it is going.
+void Referee::RefinePenaltyKeeperDive(int kickingTeamID) {
+  Team* defending = match->GetTeam(1 - kickingTeamID);
+  Player* keeper = defending->GetGoalie();
+  if (!keeper || !keeper->HasDivePlan())
+    return;  // already diving
+  const int side = defending->GetSide();
+  const auto crossing = GoalkeeperDive::FindGoalLineCrossing(
+      [this](int t_ms) { return match->GetBall()->Predict(t_ms); }, pitchHalfW * side, side, 2000);
+  if (!crossing.found)
+    return;
+  Vector3 target = penaltyDiveTarget;
+  if (penaltyDiveRead) {
+    target.coords[1] = GoalkeeperDive::ClampToReach(crossing.y, keeper->GetPosition().coords[1]);
+    target.coords[2] =
+        clamp(crossing.z, GoalkeeperDive::kMinDiveHeight, GoalkeeperDive::kMaxDiveHeight);
+  }
+  const unsigned long now = match->GetActualTime_ms();
+  keeper->SetDivePlan(match->GetBall()->Predict(0), target, now + crossing.time_ms,
+                      now + crossing.time_ms + 700);
 }

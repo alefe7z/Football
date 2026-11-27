@@ -106,8 +106,30 @@ public:
 
   virtual void ResetSituation(const Vector3& focusPos);
 
+  // Goalkeeper dive plan (see goalkeeperdive.hpp): until expire_ms the save
+  // animation is chosen as if the ball travelled from `from` (at the current
+  // time) to `target`, arriving at arrive_ms. Touching the ball still needs
+  // the real ball, so a wrong guess is a dive the wrong way.
+  void SetDivePlan(const Vector3& from, const Vector3& target, unsigned long arrive_ms,
+                   unsigned long expire_ms);
+  void ClearDivePlan() { divePlanActive = false; }
+  bool HasDivePlan() const;
+  // The planned ball position at match time time_ms.
+  Vector3 GetDivePlanBallPosition(unsigned long time_ms) const;
+  // The current save animation was started from a dive plan.
+  void SetPlannedDiveInProgress(bool value) { plannedDiveInProgress = value; }
+  bool IsPlannedDiveInProgress() const { return plannedDiveInProgress; }
+
 protected:
   void _CalculateTacticalSituation();
+
+  bool divePlanActive = false;
+  bool plannedDiveInProgress = false;
+  Vector3 divePlanFrom;
+  Vector3 divePlanTarget;
+  unsigned long divePlanStart_ms = 0;
+  unsigned long divePlanArrive_ms = 0;
+  unsigned long divePlanExpire_ms = 0;
 
   Team* team;
 

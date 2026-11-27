@@ -49,6 +49,7 @@ gtest_discover_tests(gameplayfootball_math_tests
 add_executable(gameplayfootball_velocity_tests
   onthepitch/velocity_state_test.cpp
   onthepitch/penalty_shootout_test.cpp
+  onthepitch/goalkeeper_dive_test.cpp
 )
 
 target_include_directories(gameplayfootball_velocity_tests PRIVATE

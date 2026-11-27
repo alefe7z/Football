@@ -63,3 +63,19 @@ Lista completa e detalhada: [docs/gap-list.md](../gap-list.md). O mais important
   Quick Match tem a opção.
 - O jogador humano cobra com os controles normais de chute; ainda não existe
   uma mira específica para pênalti.
+
+## Bugs conhecidos abertos nesta rodada
+
+- Queda rara (1 em ~25 execuções) ao abrir a tela da partida, com duas
+  instâncias do jogo rodando juntas; não reproduzida depois. Detalhes em
+  [relatorios/2026-11-27-claude-goleiro.md](relatorios/2026-11-27-claude-goleiro.md).
+
+## Goleiro (novo)
+
+O goleiro mergulha nos pênaltis: fica em cima da linha, escolhe um lado no
+momento do chute (lendo o batedor, chutando um lado ou ficando no meio) e
+defende quando acerta. Medido em 34 cobranças: 74% gols, 18% defesas, 9% para
+fora, perto do futebol real. Na tela aparece "Defendeu!". O jogo tem poucas
+animações de goleiro (~20), então ainda não há soco na bola, espalmada por cima
+do travessão ou saída nos pés do atacante.
+

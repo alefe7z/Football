@@ -203,6 +203,10 @@ void Humanoid::Process() {
                           0;  // .. 1 .. x .. x .. x .. 2 .. x .. x .. x ..
     }
 
+    // A goalkeeper committed to a dive reacts on every frame.
+    if (CastPlayer()->HasDivePlan())
+      frameNumPredicate = true;
+
     if (!frameNumPredicate)
       mayReQueue = false;
     // if (CastPlayer()->GetDebug()) printf("frameNumPredicate: %s\n", frameNumPredicate ? "true" :
@@ -315,6 +319,16 @@ void Humanoid::Process() {
     if (found) {
       startPos = spatialState.position;
       startAngle = spatialState.angle;
+
+      // A planned dive has started: the plan has done its job.
+      CastPlayer()->SetPlannedDiveInProgress(currentAnim->functionType == e_FunctionType_Deflect &&
+                                             CastPlayer()->HasDivePlan());
+      if (currentAnim->functionType == e_FunctionType_Deflect && CastPlayer()->HasDivePlan()) {
+        CastPlayer()->ClearDivePlan();
+        if (GetConfiguration()->GetBool("debug", false))
+          printf("[keeper] %s dives (%s)\n", CastPlayer()->GetPlayerData()->GetLastName().c_str(),
+                 currentAnim->anim->GetName().c_str());
+      }
 
       CalculatePredictedSituation(nextStartPos, nextStartAngle);
 
@@ -464,14 +478,33 @@ void Humanoid::Process() {
   }
   // ---------------------- / EXPERIMENTAL ------------------------------------------------
 
-  if (currentAnim->touchFrame == currentAnim->frameNum) {
+  // A planned dive was chosen before the ball's exact path was known: while
+  // the keeper is at full stretch, his hands and body cover a span around the
+  // touch point, so the save happens on whichever frame of that window the
+  // real ball passes close enough. The window is a few frames either side of
+  // the animation's touch frame.
+  bool plannedDiveTouch = false;
+  if (CastPlayer()->IsPlannedDiveInProgress() &&
+      currentAnim->functionType == e_FunctionType_Deflect && currentAnim->touchFrame != -1 &&
+      currentAnim->frameNum >= currentAnim->touchFrame - 5 &&
+      currentAnim->frameNum <= currentAnim->touchFrame + 8 && match->GetBallRetainer() == 0 &&
+      match->GetLastTouchTeamID() != team->GetID()) {
+    const float reach =
+        (match->GetBall()->Predict(0) - (currentAnim->touchPos + currentAnim->positionOffset))
+            .GetLength();
+    plannedDiveTouch = reach < 0.6f;
+  }
+
+  if (currentAnim->touchFrame == currentAnim->frameNum || plannedDiveTouch) {
+    if (plannedDiveTouch)
+      CastPlayer()->SetPlannedDiveInProgress(false);  // one touch per dive
     Vector3 desiredBallPosition;
     std::static_pointer_cast<FootballAnimationExtension>(
         currentAnim->anim->GetExtension("football"))
         ->GetTouchPos(currentAnim->touchFrame, desiredBallPosition);
     float desiredBallHeight = desiredBallPosition.coords[2];
 
-    float touchableDistance = 0.4f;
+    float touchableDistance = plannedDiveTouch ? 0.6f : 0.4f;
 
     float fullBallDistance =
         (match->GetBall()->Predict(0) - (currentAnim->touchPos + currentAnim->positionOffset))
@@ -498,6 +531,10 @@ void Humanoid::Process() {
     bumpyRideBias = clamp(bumpyRideBias - 0.001f, 0.0f, 1.0f);
     bumpyRideBias = curve(bumpyRideBias, 1.0f);
     bumpyRideBias = curve(bumpyRideBias, 0.5f);
+    // A keeper at full stretch gets a firm hand to it: a fingertip parry
+    // still turns the ball away instead of barely brushing it.
+    if (plannedDiveTouch)
+      bumpyRideBias *= 0.3f;
     Vector3 currentBallVec = match->GetBall()->GetMovement();
 
     if (fullBallDistance < touchableDistance &&
@@ -1405,12 +1442,15 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
                           bool preferPassAndShot) {  // returns false on no applicable anim found
   assert(command.desiredDirection.coords[2] == 0.0f);
 
-  // optimizations
+  // optimizations (skipped for a planned dive: it is chosen against the plan,
+  // not against the keeper's delayed picture of the ball)
 
+  const bool plannedDive =
+      command.desiredFunctionType == e_FunctionType_Deflect && CastPlayer()->HasDivePlan();
   if (command.desiredFunctionType != e_FunctionType_Movement &&
       command.desiredFunctionType != e_FunctionType_Trip &&
       command.desiredFunctionType != e_FunctionType_Special &&
-      command.desiredFunctionType != e_FunctionType_Sliding) {
+      command.desiredFunctionType != e_FunctionType_Sliding && !plannedDive) {
     if ((currentMentalImage->GetBallPrediction(200).Get2D() - spatialState.position).GetLength() >
         ballDistanceOptimizeThreshold) {
       return false;
@@ -1633,6 +1673,13 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
         (currentMentalImage->GetBallPrediction(180) - currentMentalImage->GetBallPrediction(120))
             .GetRotated2D(-spatialState.angle)
             .GetNormalized(Vector3(0));  // todo: proper prediction time
+    if (command.desiredFunctionType == e_FunctionType_Deflect && CastPlayer()->HasDivePlan()) {
+      const unsigned long now = match->GetActualTime_ms();
+      query.incomingBallDirection = (CastPlayer()->GetDivePlanBallPosition(now + 180) -
+                                     CastPlayer()->GetDivePlanBallPosition(now + 120))
+                                        .GetRotated2D(-spatialState.angle)
+                                        .GetNormalized(Vector3(0));
+    }
   }
 
   /*
@@ -2509,6 +2556,10 @@ signed int Humanoid::GetBestCheatableAnimID(
 
   Vector3 dud;
 
+  // A goalkeeper committed to a dive picks his save against the planned ball
+  // (goalkeeperdive.hpp); whether he touches it is decided by the real ball.
+  const bool useDivePlan = functionType == e_FunctionType_Deflect && CastPlayer()->HasDivePlan();
+
   bool found = false;
   while (iter != sortedDataSet.end() && found == false) {
     Animation* anim = anims->GetAnim(*iter);
@@ -2573,7 +2624,7 @@ signed int Humanoid::GetBestCheatableAnimID(
       // animTouchFrame, touchIDs[touchNum], touchNum, totalTouches, defaultTouchFrame);
 
       // out of bounds?
-      if (match->GetBallRetainer() != player) {
+      if (match->GetBallRetainer() != player && !useDivePlan) {
         Vector3 absBallPos = match->GetBall()->Predict(animTouchFrame * 10);
         if (fabs(absBallPos.coords[0]) > pitchHalfW + lineHalfW + 0.11f ||
             fabs(absBallPos.coords[1]) > pitchHalfH + lineHalfW + 0.11f) {
@@ -2593,10 +2644,17 @@ signed int Humanoid::GetBestCheatableAnimID(
           animTouchFrame);  // already anim space so no: .GetRotated2D(-spatialState.angle);
 
       Vector3 ballPos, ballMovement;
-      ballPos = currentMentalImage->GetBallPrediction(animTouchFrame * 10);
-      ballMovement = (currentMentalImage->GetBallPrediction(animTouchFrame * 10 + 10) -
-                      currentMentalImage->GetBallPrediction(animTouchFrame * 10)) *
-                     100.0f;
+      if (useDivePlan) {
+        const unsigned long touchTime_ms = match->GetActualTime_ms() + animTouchFrame * 10;
+        ballPos = CastPlayer()->GetDivePlanBallPosition(touchTime_ms);
+        ballMovement =
+            (CastPlayer()->GetDivePlanBallPosition(touchTime_ms + 10) - ballPos) * 100.0f;
+      } else {
+        ballPos = currentMentalImage->GetBallPrediction(animTouchFrame * 10);
+        ballMovement = (currentMentalImage->GetBallPrediction(animTouchFrame * 10 + 10) -
+                        currentMentalImage->GetBallPrediction(animTouchFrame * 10)) *
+                       100.0f;
+      }
       ballPos = (ballPos - spatialState.position).GetRotated2D(-spatialState.angle);
       ballMovement = ballMovement.GetRotated2D(-spatialState.angle);
 
@@ -2780,7 +2838,9 @@ signed int Humanoid::GetBestCheatableAnimID(
   }
 
   if (found) {
-    touchPos_ret = currentMentalImage->GetBallPrediction(animTouchFrame_ret * 10);
+    touchPos_ret = useDivePlan ? CastPlayer()->GetDivePlanBallPosition(match->GetActualTime_ms() +
+                                                                       animTouchFrame_ret * 10)
+                               : currentMentalImage->GetBallPrediction(animTouchFrame_ret * 10);
 
     fullActionSmuggle_ret = bestActionSmuggleVec2D.GetRotated2D(spatialState.angle);
     actionSmuggle_ret = fullActionSmuggle_ret;

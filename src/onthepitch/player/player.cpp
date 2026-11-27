@@ -570,6 +570,29 @@ void Player::Hide2D() {
   }
 }
 
+void Player::SetDivePlan(const Vector3& from, const Vector3& target, unsigned long arrive_ms,
+                         unsigned long expire_ms) {
+  divePlanActive = true;
+  divePlanFrom = from;
+  divePlanTarget = target;
+  divePlanStart_ms = match->GetActualTime_ms();
+  divePlanArrive_ms = std::max(arrive_ms, divePlanStart_ms + 10);
+  divePlanExpire_ms = expire_ms;
+}
+
+bool Player::HasDivePlan() const {
+  return divePlanActive && match->GetActualTime_ms() < divePlanExpire_ms &&
+         match->GetBallRetainer() == nullptr;
+}
+
+Vector3 Player::GetDivePlanBallPosition(unsigned long time_ms) const {
+  if (time_ms <= divePlanStart_ms)
+    return divePlanFrom;
+  const float bias = std::min(
+      1.0f, (float)(time_ms - divePlanStart_ms) / (float)(divePlanArrive_ms - divePlanStart_ms));
+  return divePlanFrom + (divePlanTarget - divePlanFrom) * bias;
+}
+
 void Player::SendOff() {
   std::string message = playerData->GetLastName() + " - " +
                         Localization::GetInstance().Translate("ingame_red_card") + "!";
@@ -628,6 +651,8 @@ float Player::GetStat(const char* name) const {
 
 void Player::ResetSituation(const Vector3& focusPos) {
   PlayerBase::ResetSituation(focusPos);
+  divePlanActive = false;
+  plannedDiveInProgress = false;
 
   hasPossession = false;
   hasBestPossession = false;
