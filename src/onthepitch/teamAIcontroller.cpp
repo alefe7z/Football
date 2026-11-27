@@ -1100,7 +1100,10 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
   }
 
   if (isTakerTeam) {
-    taker = AI_GetClosestPlayer(team, match->GetBall()->Predict(0).Get2D(), false);
+    taker = (forcedTaker && forcedTaker->IsActive())
+                ? forcedTaker
+                : AI_GetClosestPlayer(team, match->GetBall()->Predict(0).Get2D(), false);
+    forcedTaker = nullptr;
 
     if (setPiece == e_SetPiece_ThrowIn || setPiece == e_SetPiece_KickOff) {
       taker->ResetPosition(
@@ -1130,6 +1133,34 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
 
   } else
     taker = 0;
+
+  // Penalty shootout: only the kicker and the defending goalkeeper are near
+  // the ball; everyone else waits in the centre circle (IFAB Law 10). The
+  // kicking team's goalkeeper waits on the edge of the penalty area.
+  if (setPiece == e_SetPiece_Penalty && match->GetMatchPhase() == e_MatchPhase_Penalties) {
+    std::vector<Player*> everyone;
+    team->GetActivePlayers(everyone);
+    const float rowY = (team->GetID() == 0) ? -1.0f : 1.0f;
+    int slot = 0;
+    const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
+    for (Player* player : everyone) {
+      if (player == taker)
+        continue;
+      const bool keeper = player->GetFormationEntry().role == e_PlayerRole_GK;
+      if (keeper && !isTakerTeam)
+        continue;  // stays on the goal line (placed above)
+      Vector3 pos;
+      if (keeper) {
+        const float side = ballPos.coords[0] < 0 ? -1.0f : 1.0f;
+        pos = Vector3((pitchHalfW - 16.5f - 1.0f) * side, 18.0f * rowY, 0);
+      } else {
+        // a row of players across the centre circle, one row per team
+        pos = Vector3(-6.0f + slot * 1.3f, 2.0f * rowY, 0);
+        slot++;
+      }
+      player->ResetPosition(pos, ballPos);
+    }
+  }
 
   // keep distance from ball
   float minDistance = 2.0;

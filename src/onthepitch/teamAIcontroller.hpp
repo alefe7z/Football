@@ -42,6 +42,9 @@ public:
   void PrepareSetPiece(e_SetPiece setPiece, int takerTeamID = -1);
   SetPieceParams GetSetPieceParams(e_SetPiece setPiece);
   Player* GetPieceTaker() { return taker; }
+  // The next set piece is taken by this player instead of the nearest one
+  // (penalty shootout kicker order). Cleared once the set piece is prepared.
+  void SetForcedPieceTaker(Player* player) { forcedTaker = player; }
   e_SetPiece GetSetPieceType() { return setPieceType; }
   void ApplyAttackingRun(Player* manualPlayer = 0);
   void ApplyTeamPressure();
@@ -76,6 +79,7 @@ protected:
   Match* match;
   Team* team;
   Player* taker;
+  Player* forcedTaker = nullptr;
   e_SetPiece setPieceType;
 
   Properties baseTeamTactics;

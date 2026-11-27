@@ -1,6 +1,8 @@
 #include "referee.hpp"
 
+#include "../league/leaguecode.hpp"
 #include "../main.hpp"
+#include "../menu/career/career_database.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "gameplaytuning.hpp"
 #include "managers/resourcemanagerpool.hpp"
@@ -74,6 +76,11 @@ Referee::~Referee() {
 
 void Referee::Process() {
   // printf("%i", match->GetMatchState());
+
+  if (shootoutActive) {
+    ProcessShootout();
+    return;
+  }
 
   if (match->IsInPlay() && !match->IsInSetPiece()) {
     Vector3 ballPos = match->GetBall()->Predict(0);
@@ -172,6 +179,7 @@ void Referee::Process() {
             y = -pitchHalfH;
           buffer.restartPos = Vector3(pitchHalfW * lastSide, y, 0);
           buffer.teamID = abs(lastTouchTeam->GetID() - 1);
+          match->GetMatchData()->AddCorner(buffer.teamID);
 
         } else {
           buffer.desiredSetPiece = e_SetPiece_GoalKick;
@@ -235,16 +243,35 @@ void Referee::Process() {
             match->SetMatchPhase(e_MatchPhase_1stHalf);
           } else {
             // game over conditions
+            // Knockout ties: extra time and the shootout are opt-in;
+            // league, career and friendly fixtures end level after 90'.
+            // menu_smoke_force_shootout goes to a shootout whatever the
+            // score, so automated runs can cover it.
+            const bool forceShootout =
+                GetConfiguration()->GetBool("menu_smoke_force_shootout", false);
+            const KnockoutRules rules = ResolveKnockoutRules(
+                GetConfiguration()->GetInt("match_knockout", 0),
+                LeagueHasPendingFixture() || CareerDatabase::GetInstance().HasPendingFixture(),
+                GetConfiguration()->GetBool("match_extra_time", false),
+                GetConfiguration()->GetBool("match_penalties", false));
+            const bool tied = match->GetScore(0) == match->GetScore(1) || forceShootout;
+            const bool penalties = rules.penalties || forceShootout;
             if (match->GetMatchPhase() == e_MatchPhase_1stExtraTime) {
-              // Extra time is opt-in (knockout ties); league, career and
-              // friendly fixtures end level after 90 minutes.
-              if (match->GetScore(0) != match->GetScore(1) ||
-                  !GetConfiguration()->GetBool("match_extra_time", false)) {
+              const bool extraTime = rules.extraTime && !forceShootout;
+              if (!tied || (!extraTime && !penalties)) {
                 match->GameOver();
+                return;
+              }
+              if (!extraTime) {
+                StartShootout();
                 return;
               }
             }
             if (match->GetMatchPhase() == e_MatchPhase_Penalties) {
+              if (tied && penalties) {
+                StartShootout();
+                return;
+              }
               match->GameOver();
               return;
             }
@@ -336,6 +363,7 @@ void Referee::BallTouched() {
           buffer.restartPos = playerIter->second;
           buffer.teamID = abs(lastTouchTeamID - 1);
           buffer.active = true;
+          match->GetMatchData()->AddOffside(lastTouchTeamID);
           match->SpamMessage(Localization::GetInstance().Translate("ingame_offside") + "!");
           break;
         } else
@@ -504,11 +532,13 @@ bool Referee::CheckFoul() {
     std::string spamMessage = Localization::GetInstance().Translate("ingame_foul") + "!";
     if (foul.foulType == 2) {
       spamMessage.append(" (" + Localization::GetInstance().Translate("ingame_yellow_card") + ")");
+      match->GetMatchData()->AddYellowCard(foul.foulPlayer->GetTeamID());
       foul.foulPlayer->GiveYellowCard(match->GetActualTime_ms() +
                                       6000);  // need to find out proper moment
     }
     if (foul.foulType == 3) {
       spamMessage.append(" (" + Localization::GetInstance().Translate("ingame_red_card") + ")");
+      match->GetMatchData()->AddRedCard(foul.foulPlayer->GetTeamID());
       foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
                                    6000);  // need to find out proper moment
     }
@@ -534,7 +564,199 @@ void Referee::IssuePendingCautions() {
   // Keep the restart and current foul intact: the caution is a separate sanction.
   const auto cautions = pendingCautions.TakeAtStoppage(match->IsInPlay());
   for (Player* offender : cautions) {
+    match->GetMatchData()->AddYellowCard(offender->GetTeamID());
     offender->GiveYellowCard(match->GetActualTime_ms());
     match->SpamMessage(Localization::GetInstance().Translate("ingame_yellow_card") + "!");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Penalty shootout
+
+void Referee::BlowWhistle(int index) {
+  if (!whistle[index])
+    return;
+  Vector3 refPos(0, 0, 1.7f);
+  if (match->GetOfficials() && match->GetOfficials()->GetReferee()) {
+    refPos = match->GetOfficials()->GetReferee()->GetPosition() + Vector3(0, 0, 1.7f);
+  }
+  whistle[index]->SetPosition(refPos);
+  whistle[index]->SetGain(0.3 * GetConfiguration()->GetReal("audio_volume", 0.5));
+  whistle[index]->Poke(e_SystemType_Audio);
+}
+
+void Referee::StartShootout() {
+  shootoutActive = true;
+  shootoutKickLive = false;
+  shootoutFinished = false;
+  match->SetMatchPhase(e_MatchPhase_Penalties);
+
+  // Coin toss: the winner kicks first.
+  const int firstTeam = static_cast<int>((match->GetActualTime_ms() / 10) % 2);
+  shootout.Reset(firstTeam);
+
+  // Kicker order per team: the best penalty takers first, the keeper last.
+  for (int t = 0; t < 2; t++) {
+    std::vector<Player*> players;
+    match->GetTeam(t)->GetActivePlayers(players);
+    std::vector<ShootoutCandidate<Player*>> candidates;
+    for (Player* player : players) {
+      candidates.push_back(
+          {player,
+           PenaltyTakerRating(player->GetStat("technical_shot"), player->GetStat("mental_calmness"),
+                              player->GetStat("physical_shotpower")),
+           player->GetFormationEntry().role == e_PlayerRole_GK});
+    }
+    shootoutOrder[t] = ShootoutKickerOrder(candidates);
+    shootoutNextKicker[t] = 0;
+  }
+
+  match->GetMatchData()->SetShootoutResult(0, 0);
+  buffer.active = false;
+  buffer.endPhase = false;
+  match->StopPlay();
+  match->SpamMessage(Localization::GetInstance().Translate("ingame_penalty_shootout"), 3000);
+  shootoutNextEvent_ms = match->GetActualTime_ms() + 3000;
+  printf("[shootout] started, %s kick first\n",
+         match->GetTeam(firstTeam)->GetTeamData()->GetName().c_str());
+}
+
+void Referee::ScheduleShootoutKick() {
+  const int team = shootout.NextKickingTeam();
+  if (team < 0)
+    return;
+  const int defending = 1 - team;
+
+  // The next eligible kicker in this team's order (sent-off players skipped).
+  Player* kicker = nullptr;
+  std::vector<Player*>& order = shootoutOrder[team];
+  for (std::size_t tries = 0; tries < order.size() && !kicker; tries++) {
+    Player* candidate = order[shootoutNextKicker[team] % order.size()];
+    shootoutNextKicker[team]++;
+    if (candidate && candidate->IsActive())
+      kicker = candidate;
+  }
+  match->GetTeam(team)->GetController()->SetForcedPieceTaker(kicker);
+
+  shootoutKickTeam = team;
+  buffer.desiredSetPiece = e_SetPiece_Penalty;
+  buffer.teamID = team;
+  buffer.stopTime = match->GetActualTime_ms();
+  buffer.prepareTime = match->GetActualTime_ms() + 1000;
+  buffer.startTime = buffer.prepareTime + 2500;
+  buffer.restartPos = Vector3((pitchHalfW - 11.0) * match->GetTeam(defending)->GetSide(), 0, 0);
+  buffer.endPhase = false;
+  buffer.active = true;
+}
+
+bool Referee::ShootoutReboundTouched() const {
+  // Only the kicker's strike and the defending goalkeeper's touches count; a
+  // touch by anyone else after the kick ends the attempt.
+  Player* keeper = match->GetTeam(1 - shootoutKickTeam)->GetGoalie();
+  for (int t = 0; t < 2; t++) {
+    std::vector<Player*> players;
+    match->GetTeam(t)->GetActivePlayers(players);
+    for (Player* player : players) {
+      if (player == buffer.taker || player == keeper)
+        continue;
+      if (player->GetLastTouchTime_ms() > shootoutKickTime_ms)
+        return true;
+    }
+  }
+  return false;
+}
+
+void Referee::ShootoutBallInGoal(int scoringTeamID) {
+  if (!shootoutActive || !shootoutKickLive)
+    return;
+  ResolveShootoutKick(scoringTeamID == shootoutKickTeam && !ShootoutReboundTouched());
+}
+
+void Referee::ResolveShootoutKick(bool scored) {
+  shootoutKickLive = false;
+  shootout.RecordKick(scored);
+  match->StopPlay();
+  match->GetMatchData()->SetShootoutResult(shootout.Goals(0), shootout.Goals(1));
+
+  Localization& loc = Localization::GetInstance();
+  const std::string tally = match->GetTeam(0)->GetTeamData()->GetName() + " " +
+                            shootout.ScoreText() + " " +
+                            match->GetTeam(1)->GetTeamData()->GetName();
+  const std::string kickerName =
+      buffer.taker ? buffer.taker->GetPlayerData()->GetLastName() + " - " : std::string();
+  printf("[shootout] %s%s, %s\n", kickerName.c_str(), scored ? "scored" : "missed",
+         shootout.ScoreText().c_str());
+
+  if (shootout.IsDecided()) {
+    const int winner = shootout.Winner();
+    match->SpamMessage(
+        TRF("ingame_shootout_winner",
+            {match->GetTeam(winner)->GetTeamData()->GetName(), shootout.ScoreText()}),
+        5000);
+    printf("[shootout] decided: %s win %s on penalties\n",
+           match->GetTeam(winner)->GetTeamData()->GetName().c_str(), shootout.ScoreText().c_str());
+    BlowWhistle(3);
+    shootoutFinished = true;
+    shootoutNextEvent_ms = match->GetActualTime_ms() + 5000;
+  } else {
+    const std::string outcome =
+        scored ? loc.Translate("ingame_goal") + "!" : loc.Translate("ingame_penalty_missed");
+    match->SpamMessage(kickerName + outcome + "  (" + tally + ")", 2500);
+    shootoutNextEvent_ms = match->GetActualTime_ms() + 2500;
+  }
+}
+
+void Referee::ProcessShootout() {
+  const unsigned long now = match->GetActualTime_ms();
+
+  if (shootoutFinished) {
+    if (now >= shootoutNextEvent_ms) {
+      shootoutFinished = false;
+      match->GameOver();
+    }
+    return;
+  }
+
+  // Waiting between kicks.
+  if (!buffer.active && !shootoutKickLive) {
+    if (now >= shootoutNextEvent_ms)
+      ScheduleShootoutKick();
+    return;
+  }
+
+  // Setting up and taking the kick.
+  if (buffer.active) {
+    if (!match->IsInPlay() && !match->IsInSetPiece()) {
+      if (now == buffer.prepareTime)
+        PrepareSetPiece(e_SetPiece_Penalty);
+      if (now == buffer.startTime) {
+        BlowWhistle(1);
+        match->StartPlay();
+        match->StartSetPiece();
+      }
+    }
+    if (match->IsInSetPiece() && buffer.taker && buffer.taker->TouchAnim() &&
+        !buffer.taker->TouchPending()) {
+      buffer.active = false;
+      match->StopSetPiece();
+      match->GetTeam(0)->GetController()->PrepareSetPiece(e_SetPiece_None);
+      match->GetTeam(1)->GetController()->PrepareSetPiece(e_SetPiece_None);
+      shootoutKickLive = true;
+      shootoutKickTime_ms = now;
+    }
+    return;
+  }
+
+  // Ball struck: a miss once it is saved and held, cleared, rebounds to
+  // another player, leaves the pitch away from the goal mouth, or after a
+  // few seconds without crossing the line.
+  const Vector3 ballPos = match->GetBall()->Predict(0);
+  const bool inGoalMouth = fabs(ballPos.coords[1]) < 3.7f && ballPos.coords[2] < 2.5f;
+  const bool outOfPlay =
+      (fabs(ballPos.coords[0]) > pitchHalfW + lineHalfW + 0.11 && !inGoalMouth) ||
+      fabs(ballPos.coords[1]) > pitchHalfH + lineHalfW + 0.11;
+  const bool keeperHolds =
+      match->GetBallRetainer() != nullptr && match->GetBallRetainer() != buffer.taker;
+  if (outOfPlay || keeperHolds || ShootoutReboundTouched() || now > shootoutKickTime_ms + 3500)
+    ResolveShootoutKick(false);
 }

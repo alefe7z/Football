@@ -3,6 +3,7 @@
 
 #include "../gamedefines.hpp"
 #include "defines.hpp"
+#include "penaltyshootout.hpp"
 #include "pendingcautions.hpp"
 #include "scene/objects/sound.hpp"
 #include "scene/scene3d/scene3d.hpp"
@@ -52,6 +53,12 @@ public:
                                     // tackle resulting in fall, 3 == sliding tackle
   bool CheckFoul();
 
+  // Penalty shootout (kicks from the penalty mark) after a drawn knockout tie.
+  bool IsShootoutActive() const { return shootoutActive; }
+  const PenaltyShootout& GetShootout() const { return shootout; }
+  // Called by the match when the ball crosses a goal line during the shootout.
+  void ShootoutBallInGoal(int scoringTeamID);
+
   Player* GetCurrentFoulPlayer() { return foul.foulPlayer; }
   int GetCurrentFoulType() { return foul.foulType; }
 
@@ -72,6 +79,23 @@ protected:
 
   void PreservePendingCaution();
   void IssuePendingCautions();
+
+  void StartShootout();
+  void ProcessShootout();
+  void ScheduleShootoutKick();
+  void ResolveShootoutKick(bool scored);
+  bool ShootoutReboundTouched() const;
+  void BlowWhistle(int index);
+
+  PenaltyShootout shootout;
+  bool shootoutActive = false;
+  bool shootoutKickLive = false;  // ball struck, waiting for the outcome
+  bool shootoutFinished = false;
+  int shootoutKickTeam = -1;
+  unsigned long shootoutKickTime_ms = 0;
+  unsigned long shootoutNextEvent_ms = 0;
+  std::vector<Player*> shootoutOrder[2];
+  std::size_t shootoutNextKicker[2] = {0, 0};
 
   boost::intrusive_ptr<Sound> whistle[4];  // 0: short, 1: long, 2: half time, 3: full time
 };

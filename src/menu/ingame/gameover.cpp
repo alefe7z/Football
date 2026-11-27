@@ -39,9 +39,9 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   }
   match->Pause(true);
 
-  // Layout (frame-relative %): title 3, score 8, stats 18-42, player of the
-  // match 46, buttons 54. The frame is sized to its content.
-  Gui2Frame* frame = new Gui2Frame(windowManager, "gameover_frame", 10, 8, 80, 64, true);
+  // Layout (frame-relative %): title 3, score 8, shootout 15, stats 18-50,
+  // player of the match 53, buttons 60. The frame is sized to its content.
+  Gui2Frame* frame = new Gui2Frame(windowManager, "gameover_frame", 10, 6, 80, 70, true);
   this->AddView(frame);
   frame->Show();
 
@@ -60,6 +60,23 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   header->SetPosition(40 - header->GetTextWidthPercent() * 0.5f, 8);
   frame->AddView(header);
   header->Show();
+
+  // Penalty shootout result under the score: "Arsenal win 4-3 on penalties".
+  if (match->GetMatchData()->HasShootout()) {
+    const int winner = match->GetMatchData()->GetWinnerTeamID();
+    const std::string shootoutScore = int_to_str(match->GetMatchData()->GetShootoutGoals(0)) + "-" +
+                                      int_to_str(match->GetMatchData()->GetShootoutGoals(1));
+    const std::string shootoutStr =
+        winner >= 0 ? TRF("ingame_shootout_winner",
+                          {match->GetTeam(winner)->GetTeamData()->GetName(), shootoutScore})
+                    : shootoutScore;
+    Gui2Caption* shootoutCaption =
+        new Gui2Caption(windowManager, "caption_gameover_shootout", 2, 15, 76, 2.5f, shootoutStr);
+    shootoutCaption->SetColor(windowManager->GetStyle()->GetColor(e_DecorationType_Bright2));
+    shootoutCaption->SetPosition(40 - shootoutCaption->GetTextWidthPercent() * 0.5f, 15);
+    frame->AddView(shootoutCaption);
+    shootoutCaption->Show();
+  }
 
   // Goal scorers under each side of the score: "Kagawa 23', 67'".
   // (team, database ID) -> goals, for the ratings below. Keyed by team too:
@@ -99,7 +116,7 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
     scorerCaption->Show();
   }
 
-  buttonOkay = new Gui2Button(windowManager, "button_gameover_ok", 42, 54, 24, 4,
+  buttonOkay = new Gui2Button(windowManager, "button_gameover_ok", 42, 61, 24, 4,
                               Localization::GetInstance().Translate("gameover_continue"));
   frame->AddView(buttonOkay);
   buttonOkay->Show();
@@ -118,7 +135,7 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   int fouls1 = match->GetMatchData()->GetFouls(0);
   int fouls2 = match->GetMatchData()->GetFouls(1);
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_gameover_stats", 5, 18, 70, 24);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_gameover_stats", 5, 18.5f, 70, 32);
 
   float totalPossession = possession1 + possession2;
   int possession1Pct = (totalPossession > 0) ? round(possession1 / totalPossession * 100) : 50;
@@ -181,6 +198,26 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   grid->AddView(new Gui2Caption(windowManager, "caption_fouls_t2", 0, 0, 10, 3, int_to_str(fouls2)),
                 4, 2);
 
+  // Corners, offsides and cards (yellow / red).
+  auto addStatRow = [&](int row, const std::string& id, const std::string& header,
+                        const std::string& value1, const std::string& value2) {
+    grid->AddView(new Gui2Caption(windowManager, "caption_" + id + "_t1", 0, 0, 25, 3, value1), row,
+                  0);
+    grid->AddView(new Gui2Caption(windowManager, "caption_" + id + "_header", 0, 0, 35, 3,
+                                  Localization::GetInstance().Translate(header)),
+                  row, 1);
+    grid->AddView(new Gui2Caption(windowManager, "caption_" + id + "_t2", 0, 0, 10, 3, value2), row,
+                  2);
+  };
+  MatchData* md = match->GetMatchData();
+  addStatRow(5, "corners", "gameover_corners", int_to_str(md->GetCorners(0)),
+             int_to_str(md->GetCorners(1)));
+  addStatRow(6, "offsides", "gameover_offsides", int_to_str(md->GetOffsides(0)),
+             int_to_str(md->GetOffsides(1)));
+  addStatRow(7, "cards", "gameover_cards",
+             int_to_str(md->GetYellowCards(0)) + " / " + int_to_str(md->GetRedCards(0)),
+             int_to_str(md->GetYellowCards(1)) + " / " + int_to_str(md->GetRedCards(1)));
+
   grid->UpdateLayout(0.5);
 
   frame->AddView(grid);
@@ -240,10 +277,10 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   std::string momStr = Localization::GetInstance().Translate("gameover_mom") + ": " + momName +
                        " (" + std::string(ratingBuf) + ")";
 
-  Gui2Caption* momCaption = new Gui2Caption(windowManager, "caption_mom", 2, 46, 76, 4, momStr);
+  Gui2Caption* momCaption = new Gui2Caption(windowManager, "caption_mom", 2, 53, 76, 4, momStr);
   momCaption->SetColor(windowManager->GetStyle()->GetColor(e_DecorationType_Bright2));  // Gold
   momCaption->SetOutlineColor(Vector3(0, 0, 0));
-  momCaption->SetPosition(40 - momCaption->GetTextWidthPercent() * 0.5f, 46);
+  momCaption->SetPosition(40 - momCaption->GetTextWidthPercent() * 0.5f, 53);
   frame->AddView(momCaption);
   momCaption->Show();
 
@@ -294,7 +331,7 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   }
 
   Gui2Button* buttonHistory =
-      new Gui2Button(windowManager, "button_gameover_history", 14, 54, 24, 4,
+      new Gui2Button(windowManager, "button_gameover_history", 14, 61, 24, 4,
                      Localization::GetInstance().Translate("gameover_match_history"));
   frame->AddView(buttonHistory);
   buttonHistory->Show();
@@ -339,6 +376,11 @@ void GameOverPage::Process() {
            match->GetTeam(0)->GetTeamData()->GetName().c_str(),
            match->GetMatchData()->GetGoalCount(0), match->GetMatchData()->GetGoalCount(1),
            match->GetTeam(1)->GetTeamData()->GetName().c_str());
+    if (match->GetMatchData()->HasShootout()) {
+      printf("[menu-smoke] Penalty shootout: %i - %i, winner team %i\n",
+             match->GetMatchData()->GetShootoutGoals(0), match->GetMatchData()->GetShootoutGoals(1),
+             match->GetMatchData()->GetWinnerTeamID());
+    }
     printf("[menu-smoke] Full-match verification succeeded, quitting test run\n");
     EnvironmentManager::GetInstance().SignalQuit();
   }

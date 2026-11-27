@@ -1,5 +1,6 @@
 #include "matchoptions.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "../pagefactory.hpp"
@@ -56,6 +57,16 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   matchDurationSlider->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                       MatchDurationSliderFromMinutes(kDefaultMatchDurationMinutes));
 
+  // Drawn match: play on to penalties (and optionally extra time first).
+  knockoutButton = new Gui2Button(windowManager, "matchoptions_button_knockout", 0, 0, 46, 3.5,
+                                  TR("match_knockout"));
+  knockoutMode = std::clamp(GetConfiguration()->GetInt("match_knockout", 0), 0, 2);
+  UpdateKnockoutCaption();
+  knockoutButton->sig_OnClick.connect([this](...) {
+    knockoutMode = (knockoutMode + 1) % 3;
+    UpdateKnockoutCaption();
+  });
+
   buttonStart =
       new Gui2Button(windowManager, "matchoptions_button_start", 0, 0, 46, 3.5, TR("match_start"));
   Gui2Button* buttonBack =
@@ -81,8 +92,9 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
 
   grid->AddView(difficultySlider, 0, 0);
   grid->AddView(matchDurationSlider, 1, 0);
-  grid->AddView(buttonStart, 2, 0);
-  grid->AddView(buttonBack, 3, 0);
+  grid->AddView(knockoutButton, 2, 0);
+  grid->AddView(buttonStart, 3, 0);
+  grid->AddView(buttonBack, 4, 0);
   grid->UpdateLayout(0.5);
 
   frame->AddView(grid);
@@ -105,6 +117,12 @@ void MatchOptionsPage::UpdateMatchDurationCaption() {
   matchDurationSlider->SetValueText(TRF("match_duration_minutes_value", {std::to_string(minutes)}));
 }
 
+void MatchOptionsPage::UpdateKnockoutCaption() {
+  static const char* kModeKeys[] = {"match_knockout_off", "match_knockout_penalties",
+                                    "match_knockout_extratime"};
+  knockoutButton->SetCaption(TR("match_knockout") + ": " + TR(kModeKeys[knockoutMode]));
+}
+
 void MatchOptionsPage::UpdateDifficultyCaption() {
   difficultySlider->SetCaption(TR("match_difficulty"));
   difficultySlider->SetValueText(GetDifficultyName(difficultySlider->GetValue()));
@@ -124,6 +142,7 @@ void MatchOptionsPage::Process() {
 
 void MatchOptionsPage::GoLoadingMatchPage() {
   GetConfiguration()->Set("match_difficulty", difficultySlider->GetValue());
+  GetConfiguration()->SetInt("match_knockout", knockoutMode);
   GetConfiguration()->Set("match_duration_minutes",
                           MatchDurationMinutesFromSlider(matchDurationSlider->GetValue()));
   GetConfiguration()->SaveFile(GetConfigFilename());

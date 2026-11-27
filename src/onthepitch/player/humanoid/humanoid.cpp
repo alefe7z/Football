@@ -656,7 +656,9 @@ void Humanoid::Process() {
         team->SetLastTouchPlayer(
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
-        match->GetMatchData()->AddPassAttempt(team->GetID());
+        // Shootout kicks are not part of the match statistics.
+        if (match->GetMatchPhase() != e_MatchPhase_Penalties)
+          match->GetMatchData()->AddPassAttempt(team->GetID());
         if (currentAnim->functionType == e_FunctionType_ShortPass &&
             (currentAnim->originatingCommand.modifier & e_PlayerCommandModifier_OneTwo)) {
           team->GetController()->ApplyAttackingRun(CastPlayer());
@@ -701,11 +703,13 @@ void Humanoid::Process() {
         team->SetLastTouchPlayer(
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
-        match->GetMatchData()->AddShot(team->GetID());
+        const bool countShot = match->GetMatchPhase() != e_MatchPhase_Penalties;
+        if (countShot)
+          match->GetMatchData()->AddShot(team->GetID());
         match->AddExcitementBoost(0.35f, 2000);
 
         // Detect shots on target via linear trajectory projection toward opposing goal
-        {
+        if (countShot) {
           Vector3 ballPos = match->GetBall()->Predict(0);
           float goalX = pitchHalfW * -team->GetSide();
           float dx = goalX - ballPos.coords[0];

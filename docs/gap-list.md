@@ -161,14 +161,14 @@ Linux Debug build with tests:
 | Pri | Feature | State |
 | --- | --- | --- |
 | P1 | Substitutions | **Absent.** Benches are loaded but never used: no substitution menu, limits or AI subs. Blocks real injuries and fatigue management. |
-| P1 | Knockout rules | Extra time is now opt-in (`match_extra_time`), but no menu exposes it and no competition sets it. **Penalty shootout absent:** the `Penalties` phase immediately ends the match. `onthepitch/matchclock.hpp` has the right model but only tests use it. |
+| P1 | Knockout rules | **Done for Quick Match (2026-11-27):** Match Options has "Draw decided by: No / Penalties / Extra time + penalties" (`match_knockout`), and a drawn match goes to a 3D penalty shootout (`onthepitch/penaltyshootout.hpp`, `Referee::ProcessShootout`): IFAB order, early decision, sudden death, best takers first. **Still open:** no league or career competition uses it (no cups yet), and kicks alternate ends instead of using one goal. |
 | P1 | Set pieces | The taker is the nearest player. There are no designated takers, no aiming, power or curl control for free kicks, corners or penalties, and the kick-off is a forced short pass. |
 | P1 | Injuries | **Stub** (see §2): no stretcher, no forced substitution, no carry-over into Career. |
 | P2 | Goalkeeper control | Player switching skips the keeper. |
 | P2 | Skill moves | Only the fake shot and knock-on exist; the sidestep dribble is disabled (`playercontroller.cpp`, "not implemented yet"). |
 | P2 | Handball / VAR | Absent. |
 | P2 | Weather | Physics only, driven by hidden config keys (`match_wind_x/y`, `match_wetness`). There is no menu option and no rain or wind visuals. |
-| P2 | Statistics | No cards, corners, offsides or saves. Goal scorers and minutes now show on the full-time screen, and goals count towards Man of the Match. |
+| P2 | Statistics | Corners, offsides and cards (yellow / red) are counted and shown on the full-time screen (2026-11-27). Saves are still not counted, and the new figures are not yet stored in match history. Goal scorers and minutes show on the full-time screen, and goals count towards Man of the Match. |
 | P2 | Replays | `sig_OnShortReplayMoment` is never emitted; there is no highlights reel. |
 | P2 | Commentary | Absent; only crowd audio and on-screen messages. |
 

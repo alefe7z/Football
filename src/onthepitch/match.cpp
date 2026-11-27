@@ -1176,7 +1176,7 @@ void Match::Process() {
 
     // time
 
-    if (IsInPlay() && !IsInSetPiece()) {
+    if (IsInPlay() && !IsInSetPiece() && matchPhase != e_MatchPhase_Penalties) {
       matchTimeExact_ms +=
           MatchDurationGameTimeFromRealMilliseconds(10.0, matchDurationMinutes, matchTimeScale);
       matchTime_ms = static_cast<unsigned long>(matchTimeExact_ms);
@@ -1210,7 +1210,13 @@ void Match::Process() {
       ballIsInGoal = true;
     if (t2goal)
       ballIsInGoal = true;
-    if (IsInPlay()) {
+    if (IsInPlay() && referee->IsShootoutActive()) {
+      // Shootout kicks do not change the match score.
+      if (t1goal || t2goal) {
+        referee->ShootoutBallInGoal(t1goal ? teams[1]->GetID() : teams[0]->GetID());
+        AddExcitementBoost(0.8f, 2500);
+      }
+    } else if (IsInPlay()) {
       if (t1goal) {
         matchData->SetGoalCount(teams[1]->GetID(), matchData->GetGoalCount(1) + 1);
         goalScored = true;
@@ -1552,6 +1558,12 @@ void Match::Put() {
     //}
     scoreboard->SetGoalCount(0, matchData->GetGoalCount(0));
     scoreboard->SetGoalCount(1, matchData->GetGoalCount(1));
+    if (matchData->HasShootout()) {
+      // "PEN 3-2" in place of the clock during and after the shootout.
+      scoreboard->SetTimeStr(Localization::GetInstance().Translate("ingame_pen_short") + " " +
+                             int_to_str(matchData->GetShootoutGoals(0)) + "-" +
+                             int_to_str(matchData->GetShootoutGoals(1)));
+    }
 
     bool toggleStats = false;
     {

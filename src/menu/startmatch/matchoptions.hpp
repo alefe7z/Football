@@ -26,9 +26,12 @@ public:
 protected:
   void UpdateMatchDurationCaption();
   void UpdateDifficultyCaption();
+  void UpdateKnockoutCaption();
 
   Gui2Slider* difficultySlider;
   Gui2Slider* matchDurationSlider;
+  Gui2Button* knockoutButton = nullptr;
+  int knockoutMode = 0;  // 0 off, 1 penalties, 2 extra time + penalties
   unsigned long pageCreatedTime_ms;
   bool autoAdvanceTriggered;
 };

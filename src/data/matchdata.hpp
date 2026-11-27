@@ -47,6 +47,34 @@ public:
   void AddFoul(int teamID) { foulsCommitted[teamID]++; }
   int GetFouls(int teamID) const { return foulsCommitted[teamID]; }
 
+  // set-piece and discipline tracking
+  void AddCorner(int teamID) { corners[teamID]++; }
+  int GetCorners(int teamID) const { return corners[teamID]; }
+  void AddOffside(int teamID) { offsides[teamID]++; }
+  int GetOffsides(int teamID) const { return offsides[teamID]; }
+  void AddYellowCard(int teamID) { yellowCards[teamID]++; }
+  int GetYellowCards(int teamID) const { return yellowCards[teamID]; }
+  void AddRedCard(int teamID) { redCards[teamID]++; }
+  int GetRedCards(int teamID) const { return redCards[teamID]; }
+
+  // Penalty shootout result (kicks from the penalty mark). The match score
+  // stays a draw; the shootout only decides who goes through.
+  void SetShootoutResult(int goals0, int goals1) {
+    shootoutPlayed = true;
+    shootoutGoals[0] = goals0;
+    shootoutGoals[1] = goals1;
+  }
+  bool HasShootout() const { return shootoutPlayed; }
+  int GetShootoutGoals(int teamID) const { return shootoutGoals[teamID]; }
+  // Winner of the match including the shootout: 0, 1, or -1 for a draw.
+  int GetWinnerTeamID() const {
+    if (goalCount[0] != goalCount[1])
+      return goalCount[0] > goalCount[1] ? 0 : 1;
+    if (shootoutPlayed && shootoutGoals[0] != shootoutGoals[1])
+      return shootoutGoals[0] > shootoutGoals[1] ? 0 : 1;
+    return -1;
+  }
+
   // Database IDs of the players who scored for a team, one entry per goal
   // (own goals are not credited to anyone).
   void AddGoalScorer(int teamID, int playerDatabaseID, const std::string& minute = "") {
@@ -76,6 +104,13 @@ protected:
   int pendingPassTeamID;
 
   int foulsCommitted[2];
+  int corners[2] = {0, 0};
+  int offsides[2] = {0, 0};
+  int yellowCards[2] = {0, 0};
+  int redCards[2] = {0, 0};
+
+  bool shootoutPlayed = false;
+  int shootoutGoals[2] = {0, 0};
 
   std::array<std::vector<int>, 2> goalScorers;
   std::array<std::vector<std::string>, 2> goalMinutes;
