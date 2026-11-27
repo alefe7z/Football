@@ -5,6 +5,7 @@
 #include "../utils.hpp"
 #include "base/properties.hpp"
 #include "defines.hpp"
+#include "faceshape.hpp"
 
 enum e_PlayerCondition {
   e_PlayerCondition_Terrible = 0,  // ⬇️ Purple (-9%)
@@ -42,6 +43,7 @@ public:
   int GetSkinColor() { return skinColor; }
   std::string GetHairStyle() { return hairStyle; }
   std::string GetHairColor() { return hairColor; }
+  const FaceShape& GetFaceShape() const { return faceShape; }
   float GetHeight() { return height; }
 
 protected:
@@ -53,6 +55,7 @@ protected:
   Properties stats;
   e_PlayerCondition condition;
 
+  FaceShape faceShape;
   int skinColor;
   std::string hairStyle;
   std::string hairColor;

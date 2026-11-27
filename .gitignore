@@ -15,3 +15,6 @@ tools/*_bin
 # Test fixture for the career_match smoke test.
 !data/menu_smoke_career_match/career.save
 
+
+# Local content editor profiles (assets, databases and saves).
+/profiles/

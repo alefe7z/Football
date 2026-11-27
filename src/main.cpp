@@ -1,3 +1,5 @@
+#include <cstdio>
+
 #ifdef WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -5,7 +7,6 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <cstdio>
 
 #include <windows.h>
 // clang-format off
@@ -510,7 +511,15 @@ int main(int argc, const char** argv) {
 #ifdef WIN32
   SetUnhandledExceptionFilter(CustomCrashHandler);
 #endif
-  if (argc > 0) {
+  const char* contentDirectory = std::getenv("FOOTBALL_CONTENT_DIR");
+  if (contentDirectory && *contentDirectory) {
+    std::error_code error;
+    std::filesystem::current_path(contentDirectory, error);
+    if (error || !std::filesystem::is_regular_file("databases/default/database.sqlite", error)) {
+      std::fprintf(stderr, "Invalid FOOTBALL_CONTENT_DIR: %s\n", contentDirectory);
+      return 1;
+    }
+  } else if (argc > 0) {
     try {
       std::filesystem::path exeDir =
           std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();

@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 #include "../../../main.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
@@ -127,6 +129,26 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
       boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->GetGeometryData();
   bodyGeom->resourceMutex.lock();
   std::vector<MaterializedTriangleMesh>& tmesh = bodyGeom->GetResource()->GetTriangleMeshesRef();
+  const auto& facePath = player->GetPlayerData()->GetFaceShape().Model();
+  std::error_code fileError;
+  if (!facePath.empty() && std::filesystem::is_regular_file(facePath, fileError)) {
+    auto head = std::find_if(tmesh.begin(), tmesh.end(), [](const MaterializedTriangleMesh& mesh) {
+      return mesh.name == "head";
+    });
+    if (head != tmesh.end()) {
+      auto faceData = ResourceManagerPool::GetInstance()
+                          .GetManager<GeometryData>(e_ResourceType_GeometryData)
+                          ->Fetch(facePath, true, true);
+      detailedFace = boost::static_pointer_cast<Geometry>(
+          ObjectFactory::GetInstance().CreateObject("face", e_ObjectType_Geometry));
+      GetScene3D()->CreateSystemObjects(detailedFace);
+      detailedFace->SetLocalMode(e_LocalMode_Absolute);
+      detailedFace->SetGeometryData(faceData);
+      fullbodyTargetNode->AddObject(detailedFace);
+      delete[] head->vertices;
+      tmesh.erase(head);
+    }
+  }
   for (unsigned int i = 0; i < tmesh.size(); i++) {
     if (tmesh.at(i).material.diffuseTexture != boost::intrusive_ptr<Resource<Surface>>()) {
       if (tmesh.at(i).material.diffuseTexture->GetIdentString() == "skin.jpg") {
@@ -203,6 +225,8 @@ HumanoidBase::~HumanoidBase() {
   humanoidNode.reset();
   fullbodyTargetNode->DeleteNode(fullbodyNode);
   fullbodyTargetNode->DeleteObject(hairStyle);
+  if (detailedFace)
+    fullbodyTargetNode->DeleteObject(detailedFace);
 
   buf_TemporalHumanoidNodes.clear();
 
@@ -337,6 +361,8 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
       }
       assert(colorCoords.find(vertexPos) != colorCoords.end());
       const Vector3& color = colorCoords.find(vertexPos)->second;
+      // Bone weights are keyed by the original bind-pose coordinates.
+      player->GetPlayerData()->GetFaceShape().Apply(uniqueMesh.data + v);
       uniqueMesh.data[v + 0] *= zMultiplier;
       uniqueMesh.data[v + 1] *= zMultiplier;
       uniqueMesh.data[v + 2] *= zMultiplier;
@@ -463,6 +489,11 @@ void HumanoidBase::UpdateFullbodyNodes() {
   hairStyle->SetRotation(joints[2].orientation, false);
   hairStyle->SetPosition(joints[2].position * zMultiplier + fullbodyOffset, false);
   hairStyle->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+  if (detailedFace) {
+    detailedFace->SetRotation(joints[2].orientation, false);
+    detailedFace->SetPosition(joints[2].position * zMultiplier + fullbodyOffset, false);
+    detailedFace->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+  }
 
   // hairStyle->SetRotation(nodeMap.find("neck")->second->GetDerivedRotation());
   // hairStyle->SetPosition(nodeMap.find("neck")->second->GetDerivedPosition() +
