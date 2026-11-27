@@ -480,6 +480,10 @@ Known defects and missing features in match play and Career mode are listed by
 priority in **[docs/gap-list.md](docs/gap-list.md)**; it is the best place to
 pick up work.
 
+AI coding agents working on this repository follow **[AGENTS.md](AGENTS.md)**
+and the collaboration protocol, status report and AAA roadmap in
+**[docs/colaboracao/](docs/colaboracao/)** (Portuguese).
+
 > **Note on GitHub Issues:** the Issues tab on GitHub is **not active** for
 > this project, so bug reports and feature requests cannot be filed there.
 > Contribution is pull-request based:
