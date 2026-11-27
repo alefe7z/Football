@@ -249,6 +249,8 @@ public:
   void Hide() {
     fullbodyNode->SetPosition(Vector3(1000, 1000, -1000));
     hairStyle->SetPosition(Vector3(1000, 1000, -1000));
+    if (detailedFace)
+      detailedFace->SetPosition(Vector3(1000, 1000, -1000));
   }  // hax ;)
 
   void SetKit(boost::intrusive_ptr<Resource<Surface>> newKit);
@@ -332,6 +334,7 @@ protected:
   std::shared_ptr<Scene3D> scene3D;
 
   boost::intrusive_ptr<Geometry> hairStyle;
+  boost::intrusive_ptr<Geometry> detailedFace;
 
   std::string kitDiffuseTextureIdentString;
 

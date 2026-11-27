@@ -210,7 +210,7 @@ class Editor:
                     db.execute("UPDATE players SET face_shape=? WHERE id=?", (value, key))
                 self.status.set(f"Rosto de {first} {last} salvo.")
 
-            open_face(dialog, self.profile / "media/objects/players/models/fullbody.ase",
+            open_face(dialog, self.profile,
                       f"{first} {last}", int(skin or 1), data, save)
 
         self.button(dialog, "Editar nome", rename)

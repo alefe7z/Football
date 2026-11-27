@@ -12,6 +12,7 @@
 namespace blunted {
 
 struct MaterializedTriangleMesh {
+  std::string name;
   Material material;
 
   float* vertices;       // was: triangleMesh

@@ -439,6 +439,7 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
   resource->resourceMutex.lock();
   std::vector<unsigned int> indices;
   resource->GetResource()->AddTriangleMesh(material, rawTriangleMesh, tmeshsize, indices);
+  resource->GetResource()->GetTriangleMeshesRef().back().name = name;
   resource->resourceMutex.unlock();
 }
 

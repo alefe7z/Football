@@ -13,10 +13,21 @@ public:
 
   void Load(const std::string& data) {
     offsets.clear();
+    model.clear();
     std::istringstream input(data);
     input.imbue(std::locale::classic());
     std::string header;
-    if (!std::getline(input, header) || header.rfind("face-v1 ", 0) != 0)
+    if (!std::getline(input, header))
+      return;
+    if (header.rfind("face-v2 ", 0) == 0) {
+      std::istringstream fields(header.substr(8));
+      std::string digest;
+      fields >> digest;
+      if (digest.size() == 64 && digest.find_first_not_of("0123456789abcdef") == std::string::npos)
+        model = "media/objects/players/faces/" + digest + ".ase";
+      return;
+    }
+    if (header.rfind("face-v1 ", 0) != 0)
       return;
     std::map<Point, Point> parsed;
     std::string line;
@@ -38,6 +49,8 @@ public:
     offsets.swap(parsed);
   }
 
+  const std::string& Model() const { return model; }
+
   void Apply(float* position) const {
     if (offsets.empty())
       return;
@@ -49,5 +62,6 @@ public:
   }
 
 private:
+  std::string model;
   std::map<Point, Point> offsets;
 };

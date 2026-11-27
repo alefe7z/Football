@@ -21,14 +21,25 @@ preparar o conteúdo antes da compilação.
 ## Editar a forma do rosto
 
 Em **Editar jogador e rosto 3D**, escolha um atleta e abra **Editar rosto 3D**.
-Gire a cabeça para conferir o perfil. Os quatro controles alteram a largura
-das bochechas e da mandíbula, a projeção do rosto e a altura do queixo.
-A prévia mostra a malha de cabeça sem cabelo. **Salvar rosto** grava os
-ajustes daquele jogador no banco do perfil. Para desfazer, use **Restaurar
-formato** e salve. Fechar a janela descarta os ajustes em aberto.
+Arraste a prévia para girar a cabeça ou use o controle **Girar**.
+As seis abas oferecem 21 ajustes de forma. Em **Olhos**, altere a distância,
+a abertura das pálpebras, a inclinação dos cantos e a dobra palpebral.
+Também é possível escolher a cor da íris. Em **Nariz**, ajuste a projeção,
+a largura, as narinas e a inclinação da ponta. **Boca** controla a largura,
+a posição e os cantos. **Lábios** permite ajustar cada lábio e o arco do cupido.
+Em **Orelhas**, altere o tamanho, a abertura e o lóbulo.
 
-Abra o jogo compilado desta versão pelo editor para usar o rosto em partida.
-A textura de pele e o penteado do atleta continuam a vir dos dados do jogo.
+**Salvar rosto** grava a escolha para o atleta e exporta a malha e sua
+textura em `media/objects/players/faces` no perfil. Abra a partida pelo
+editor usando o executável compilado desta versão. O penteado é aplicado
+pelo jogo. Para voltar aos traços neutros do modelo detalhado, use
+**Restaurar traços** e salve. Fechar a janela descarta a edição em andamento.
+Os rostos do editor anterior continuam funcionando e podem ser adaptados
+à nova cabeça ao reabrir e salvar. Para compartilhar um perfil, inclua a
+pasta de faces e o banco de dados.
+
+A cabeça e os controles anatômicos são derivados dos recursos CC0 do
+MakeHuman. [Créditos e licença](../tools/face_assets/README.md)
 
 ## Bolas e chuteiras
 
