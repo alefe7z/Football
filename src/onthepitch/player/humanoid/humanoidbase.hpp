@@ -249,6 +249,8 @@ public:
   void Hide() {
     fullbodyNode->SetPosition(Vector3(1000, 1000, -1000));
     hairStyle->SetPosition(Vector3(1000, 1000, -1000));
+    if (eyelids)
+      eyelids->SetPosition(Vector3(1000, 1000, -1000));
     if (detailedFace)
       detailedFace->SetPosition(Vector3(1000, 1000, -1000));
   }  // hax ;)
@@ -335,6 +337,8 @@ protected:
 
   boost::intrusive_ptr<Geometry> hairStyle;
   boost::intrusive_ptr<Geometry> detailedFace;
+  boost::intrusive_ptr<Geometry> eyelids;
+  bool portraitDemo = false;
 
   std::string kitDiffuseTextureIdentString;
 

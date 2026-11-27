@@ -145,6 +145,19 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
       detailedFace->SetLocalMode(e_LocalMode_Absolute);
       detailedFace->SetGeometryData(faceData);
       fullbodyTargetNode->AddObject(detailedFace);
+      auto lidPath = std::filesystem::path(facePath).replace_extension(".lids.ase");
+      if (std::filesystem::is_regular_file(lidPath, fileError)) {
+        portraitDemo = GetConfiguration()->GetBool("face_portrait_demo", false);
+        auto lids = ResourceManagerPool::GetInstance()
+                        .GetManager<GeometryData>(e_ResourceType_GeometryData)
+                        ->Fetch(lidPath.generic_string(), true, true);
+        eyelids = boost::static_pointer_cast<Geometry>(
+            ObjectFactory::GetInstance().CreateObject("eyelids", e_ObjectType_Geometry));
+        GetScene3D()->CreateSystemObjects(eyelids);
+        eyelids->SetLocalMode(e_LocalMode_Absolute);
+        eyelids->SetGeometryData(lids);
+        fullbodyTargetNode->AddObject(eyelids);
+      }
       delete[] head->vertices;
       tmesh.erase(head);
     }
@@ -225,6 +238,8 @@ HumanoidBase::~HumanoidBase() {
   humanoidNode.reset();
   fullbodyTargetNode->DeleteNode(fullbodyNode);
   fullbodyTargetNode->DeleteObject(hairStyle);
+  if (eyelids)
+    fullbodyTargetNode->DeleteObject(eyelids);
   if (detailedFace)
     fullbodyTargetNode->DeleteObject(detailedFace);
 
@@ -490,7 +505,27 @@ void HumanoidBase::UpdateFullbodyNodes() {
   hairStyle->SetPosition(joints[2].position * zMultiplier + fullbodyOffset, false);
   hairStyle->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
   if (detailedFace) {
-    detailedFace->SetRotation(joints[2].orientation, false);
+    Quaternion pose = joints[2].orientation;
+    if (eyelids) {
+      float seconds = EnvironmentManager::GetInstance().GetTime_ms() * 0.001f;
+      if (portraitDemo) {
+        Quaternion turn;
+        turn.SetAngleAxis(0.68f + 0.65f * sin(seconds * 0.85f), Vector3(0, 0, 1));
+        pose = pose * turn;
+        hairStyle->SetRotation(pose, false);
+        hairStyle->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+      }
+      float phase = fmod(seconds + player->GetID() * 0.317f, portraitDemo ? 2.0f : 3.9f);
+      float duration = portraitDemo ? 0.55f : 0.22f;
+      float closure = phase < duration ? pow(sin(pi * phase / duration), 2) : 0;
+      Quaternion blink;
+      blink.SetAngleAxis(-1.65f * (1.0f - closure), Vector3(1, 0, 0));
+      eyelids->SetRotation(pose * blink, false);
+      eyelids->SetPosition(joints[2].position * zMultiplier + fullbodyOffset +
+                           pose * Vector3(0, -0.0701f, 0.1758f), false);
+      eyelids->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+    }
+    detailedFace->SetRotation(pose, false);
     detailedFace->SetPosition(joints[2].position * zMultiplier + fullbodyOffset, false);
     detailedFace->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
   }

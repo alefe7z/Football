@@ -1526,6 +1526,30 @@ void Match::Put() {
 
   GetDynamicNode()->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
 
+  if (GetConfiguration()->GetBool("face_portrait_demo", false)) {
+    std::list<boost::intrusive_ptr<Geometry>> models;
+    GetDynamicNode()->GetObjects<Geometry>(e_ObjectType_Geometry, models);
+    for (const auto& model : models) {
+      if (model->GetName() != "face")
+        continue;
+      Vector3 center = model->GetDerivedPosition() + Vector3(0, 0, 0.17f);
+      float seconds = EnvironmentManager::GetInstance().GetTime_ms() * 0.001f;
+      float angle = 0.68f + 0.65f * sin(seconds * 0.85f);
+      Vector3 direction = (model->GetDerivedRotation() * Vector3(0, -1, 0))
+                              .Get2D().GetNormalized().GetRotated2D(-angle);
+      Quaternion pitch, yaw;
+      pitch.SetAngleAxis(pi * 0.5f, Vector3(1, 0, 0));
+      yaw.SetAngleAxis((-direction).GetAngle2D() + 1.5f * pi, Vector3(0, 0, 1));
+      cameraNode->SetPosition(center + direction * 0.98f, false);
+      cameraNode->SetRotation(yaw, false);
+      camera->SetRotation(pitch, false);
+      camera->SetFOV(28);
+      camera->SetCapping(0.03f, 200);
+      cameraNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+      break;
+    }
+  }
+
   if (!pause) {
     teams[0]->Put2D();
     teams[1]->Put2D();

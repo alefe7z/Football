@@ -201,6 +201,30 @@ def ase(points, faces, texture):
 DIRECTORY = Path("media/objects/players/faces")
 
 
+def eyelid_mesh(eye_spacing, texture):
+    # Spherical patches rotate about the common eye axis in neck-local space.
+    points, faces = [], []
+    for side in (-1, 1):
+        start = len(points)
+        for column in range(13):
+            azimuth = math.pi * (column + 0.01) / 12.02
+            for row in range(11):
+                elevation = -0.62 + row * 0.18
+                radius = 0.0175 * math.sin(azimuth)
+                points.append(
+                    (
+                        side * eye_spacing + 0.0168 * math.cos(azimuth),
+                        -radius * math.cos(elevation),
+                        radius * math.sin(elevation),
+                    )
+                )
+        for column in range(12):
+            for row in range(10):
+                i = start + column * 11 + row
+                faces.extend([((i, i + 1, i + 11), 0), ((i + 1, i + 12, i + 11), 0)])
+    return ase(points, faces, texture)
+
+
 def export(profile, head, values, skin, iris):
     folder = profile / DIRECTORY
     folder.mkdir(parents=True, exist_ok=True)
@@ -210,4 +234,9 @@ def export(profile, head, values, skin, iris):
     data = ase(head.deform(values), head.faces, (DIRECTORY / name).as_posix())
     digest = hashlib.sha256(data).hexdigest()
     atomic_write(folder / (digest + ".ase"), data)
+    spacing = (0.308 + 0.072 * values[-1] / 100) * 0.108
+    atomic_write(
+        folder / (digest + ".lids.ase"),
+        eyelid_mesh(spacing, (DIRECTORY / name).as_posix()),
+    )
     return " ".join(["face-v2", digest, iris, *map(str, values)])
